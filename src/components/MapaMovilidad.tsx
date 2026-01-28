@@ -29,8 +29,6 @@ interface Punto {
 interface FormData {
   gastoDiario: string;
   motivoViaje: string;
-  medioTransporte: string;
-  comentarios: string;
 }
 
 type Paso = 1 | 2 | 3 | 4;
@@ -148,8 +146,6 @@ export default function MapaMovilidad() {
   const [formData, setFormData] = useState<FormData>({
     gastoDiario: "",
     motivoViaje: "",
-    medioTransporte: "",
-    comentarios: "",
   });
 
   // Estado de envío
@@ -279,8 +275,6 @@ export default function MapaMovilidad() {
             : null,
           gastoDiario: parseFloat(formData.gastoDiario),
           motivoViaje: formData.motivoViaje,
-          medioTransporte: formData.medioTransporte || null,
-          comentarios: formData.comentarios || null,
         }),
       });
 
@@ -308,8 +302,6 @@ export default function MapaMovilidad() {
     setFormData({
       gastoDiario: "",
       motivoViaje: "",
-      medioTransporte: "",
-      comentarios: "",
     });
     setEnviado(false);
     setPaso(1);
@@ -645,40 +637,6 @@ export default function MapaMovilidad() {
                     <option value="recreacion">Recreación / Ocio</option>
                     <option value="otro">Otro</option>
                   </select>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="medioTransporte">
-                    Transporte principal (opcional)
-                  </label>
-                  <select
-                    id="medioTransporte"
-                    name="medioTransporte"
-                    value={formData.medioTransporte}
-                    onChange={handleInputChange}
-                  >
-                    <option value="">Selecciona una opción</option>
-                    <option value="ruta">Ruta / Microbús</option>
-                    <option value="linea">Línea del Periférico</option>
-                    <option value="taxi">Taxi</option>
-                    <option value="uber">Uber / DiDi / Cabify</option>
-                    <option value="bicicleta">Bicicleta</option>
-                    <option value="caminando">Caminando</option>
-                    <option value="auto_propio">Auto propio</option>
-                    <option value="otro">Otro</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="comentarios">Comentarios (opcional)</label>
-                  <textarea
-                    id="comentarios"
-                    name="comentarios"
-                    value={formData.comentarios}
-                    onChange={handleInputChange}
-                    rows={2}
-                    placeholder="Algo más que quieras compartir..."
-                  />
                 </div>
 
                 <button
