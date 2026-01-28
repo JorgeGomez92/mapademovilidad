@@ -1,0 +1,34 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Viaje {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+
+  // Punto de origen
+  origenLat       Float
+  origenLng       Float
+  origenDireccion Json?    // {calle, numero, colonia, cp, ciudad}
+
+  // Punto de destino
+  destinoLat      Float
+  destinoLng      Float
+  destinoDireccion Json?   // {calle, numero, colonia, cp, ciudad}
+
+  // Puntos de transbordo (JSON array de {lat, lng, direccion})
+  transbordos     Json?
+
+  // Datos del formulario
+  gastoDiario     Float
+  motivoViaje     String
+  medioTransporte String?
+
+  // Metadata opcional
+  comentarios     String?
+}
