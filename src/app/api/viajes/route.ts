@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validar transbordos (si existen)
-    let transbordosValidados = null;
+    let transbordosValidados: object[] | undefined = undefined;
     if (transbordos && Array.isArray(transbordos)) {
       if (transbordos.length > 10) {
         return NextResponse.json(
@@ -120,10 +120,10 @@ export async function POST(request: NextRequest) {
       data: {
         origenLat: origen.lat,
         origenLng: origen.lng,
-        origenDireccion: origenDireccion || null,
+        origenDireccion: origenDireccion || undefined,
         destinoLat: destino.lat,
         destinoLng: destino.lng,
-        destinoDireccion: destinoDireccion || null,
+        destinoDireccion: destinoDireccion || undefined,
         transbordos: transbordosValidados,
         gastoDiario: gastoNum,
         motivoViaje,
