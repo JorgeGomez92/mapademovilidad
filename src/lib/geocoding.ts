@@ -75,10 +75,21 @@ function formatDisplayName(data: NominatimResponse): string {
     parts.push(address.neighbourhood || address.suburb || "");
   }
 
-  // Si no hay partes, usar el display_name
+  // Código postal
+  if (address.postcode) {
+    parts.push(`C.P. ${address.postcode}`);
+  }
+
+  // Ciudad
+  const ciudad = address.city || address.town || address.village;
+  if (ciudad) {
+    parts.push(ciudad);
+  }
+
+  // Si no hay partes específicas, usar el display_name completo de Nominatim
+  // (quitando solo país y estado para no ser redundante)
   if (parts.length === 0) {
-    // Tomar solo las primeras 2 partes del display_name
-    return data.display_name.split(",").slice(0, 2).join(",").trim();
+    return data.display_name.split(",").slice(0, 4).join(",").trim();
   }
 
   return parts.join(", ");
