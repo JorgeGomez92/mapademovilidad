@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (format === "csv") {
-      return exportCSV(viajes, type);
+      return exportCSV(viajes);
     } else {
       return exportGeoJSON(viajes, type);
     }
@@ -48,17 +48,37 @@ interface Viaje {
   createdAt: Date;
   origenLat: number;
   origenLng: number;
+  origenDireccion?: unknown;
   destinoLat: number;
   destinoLng: number;
+  destinoDireccion?: unknown;
   gastoDiario: number;
   motivoViaje: string;
-  transbordos?: unknown;
+  tiempoIda?: number | null;
+  tiempoRegreso?: number | null;
+}
+
+// Extraer displayName del objeto Direccion guardado por Nominatim
+function getDireccion(dir: unknown): string {
+  if (!dir || typeof dir !== "object") return "";
+  const d = dir as { displayName?: string };
+  return d.displayName || "";
 }
 
 function exportGeoJSON(viajes: Viaje[], type: string) {
   const features: object[] = [];
 
   viajes.forEach((viaje, index) => {
+    const baseProps = {
+      id: viaje.id,
+      viaje_num: index + 1,
+      gasto_diario: viaje.gastoDiario,
+      motivo: MOTIVOS_NOMBRES[viaje.motivoViaje] || viaje.motivoViaje,
+      tiempo_ida_min: viaje.tiempoIda ?? "",
+      tiempo_regreso_min: viaje.tiempoRegreso ?? "",
+      fecha: viaje.createdAt.toISOString(),
+    };
+
     if (type === "all" || type === "origins") {
       features.push({
         type: "Feature",
@@ -67,12 +87,9 @@ function exportGeoJSON(viajes: Viaje[], type: string) {
           coordinates: [viaje.origenLng, viaje.origenLat],
         },
         properties: {
-          id: viaje.id,
+          ...baseProps,
           tipo: "origen",
-          viaje_num: index + 1,
-          gasto_diario: viaje.gastoDiario,
-          motivo: MOTIVOS_NOMBRES[viaje.motivoViaje] || viaje.motivoViaje,
-          fecha: viaje.createdAt.toISOString(),
+          direccion: getDireccion(viaje.origenDireccion),
         },
       });
     }
@@ -85,35 +102,10 @@ function exportGeoJSON(viajes: Viaje[], type: string) {
           coordinates: [viaje.destinoLng, viaje.destinoLat],
         },
         properties: {
-          id: viaje.id,
+          ...baseProps,
           tipo: "destino",
-          viaje_num: index + 1,
-          gasto_diario: viaje.gastoDiario,
-          motivo: MOTIVOS_NOMBRES[viaje.motivoViaje] || viaje.motivoViaje,
-          fecha: viaje.createdAt.toISOString(),
+          direccion: getDireccion(viaje.destinoDireccion),
         },
-      });
-    }
-
-    // Incluir transbordos si existen
-    if (type === "all" && viaje.transbordos && Array.isArray(viaje.transbordos)) {
-      (viaje.transbordos as Array<{ lat: number; lng: number }>).forEach((t, tIndex) => {
-        features.push({
-          type: "Feature",
-          geometry: {
-            type: "Point",
-            coordinates: [t.lng, t.lat],
-          },
-          properties: {
-            id: viaje.id,
-            tipo: "transbordo",
-            transbordo_num: tIndex + 1,
-            viaje_num: index + 1,
-            gasto_diario: viaje.gastoDiario,
-            motivo: MOTIVOS_NOMBRES[viaje.motivoViaje] || viaje.motivoViaje,
-            fecha: viaje.createdAt.toISOString(),
-          },
-        });
       });
     }
   });
@@ -131,65 +123,43 @@ function exportGeoJSON(viajes: Viaje[], type: string) {
   });
 }
 
-function exportCSV(viajes: Viaje[], type: string) {
+// CSV: una fila por viaje con origen y destino en la misma fila
+function exportCSV(viajes: Viaje[]) {
   const rows: string[] = [];
 
-  // Header
-  rows.push("id,tipo,latitud,longitud,gasto_diario,motivo,fecha");
+  // Header descriptivo: una fila por viaje
+  rows.push(
+    "id,origen_lat,origen_lng,origen_direccion,destino_lat,destino_lng,destino_direccion,gasto_diario,motivo,tiempo_ida_min,tiempo_regreso_min,fecha"
+  );
 
-  viajes.forEach((viaje, index) => {
-    const escape = (val: string | number) =>
-      typeof val === "string" ? `"${val.replace(/"/g, '""')}"` : val;
+  viajes.forEach((viaje) => {
+    const esc = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined) return "";
+      return typeof val === "string" ? `"${val.replace(/"/g, '""')}"` : val;
+    };
 
-    if (type === "all" || type === "origins") {
-      rows.push(
-        [
-          escape(viaje.id),
-          "origen",
-          viaje.origenLat,
-          viaje.origenLng,
-          viaje.gastoDiario,
-          escape(MOTIVOS_NOMBRES[viaje.motivoViaje] || viaje.motivoViaje),
-          escape(viaje.createdAt.toISOString()),
-        ].join(",")
-      );
-    }
-
-    if (type === "all" || type === "destinations") {
-      rows.push(
-        [
-          escape(viaje.id),
-          "destino",
-          viaje.destinoLat,
-          viaje.destinoLng,
-          viaje.gastoDiario,
-          escape(MOTIVOS_NOMBRES[viaje.motivoViaje] || viaje.motivoViaje),
-          escape(viaje.createdAt.toISOString()),
-        ].join(",")
-      );
-    }
-
-    if (type === "all" && viaje.transbordos && Array.isArray(viaje.transbordos)) {
-      (viaje.transbordos as Array<{ lat: number; lng: number }>).forEach((t) => {
-        rows.push(
-          [
-            escape(viaje.id),
-            "transbordo",
-            t.lat,
-            t.lng,
-            viaje.gastoDiario,
-            escape(MOTIVOS_NOMBRES[viaje.motivoViaje] || viaje.motivoViaje),
-            escape(viaje.createdAt.toISOString()),
-          ].join(",")
-        );
-      });
-    }
+    rows.push(
+      [
+        esc(viaje.id),
+        viaje.origenLat,
+        viaje.origenLng,
+        esc(getDireccion(viaje.origenDireccion)),
+        viaje.destinoLat,
+        viaje.destinoLng,
+        esc(getDireccion(viaje.destinoDireccion)),
+        viaje.gastoDiario,
+        esc(MOTIVOS_NOMBRES[viaje.motivoViaje] || viaje.motivoViaje),
+        viaje.tiempoIda ?? "",
+        viaje.tiempoRegreso ?? "",
+        esc(viaje.createdAt.toISOString()),
+      ].join(",")
+    );
   });
 
   return new NextResponse(rows.join("\n"), {
     headers: {
       "Content-Type": "text/csv",
-      "Content-Disposition": `attachment; filename="viajes_movilidad_${type}.csv"`,
+      "Content-Disposition": `attachment; filename="viajes_movilidad.csv"`,
     },
   });
 }

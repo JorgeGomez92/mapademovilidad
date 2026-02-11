@@ -24,7 +24,6 @@ interface Viaje {
   gastoDiario: number;
   motivoViaje: string;
   createdAt: string;
-  transbordos?: Array<{ lat: number; lng: number }>;
 }
 
 interface Stats {

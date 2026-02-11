@@ -29,9 +29,11 @@ interface Punto {
 interface FormData {
   gastoDiario: string;
   motivoViaje: string;
+  tiempoIda: string;
+  tiempoRegreso: string;
 }
 
-type Paso = 1 | 2 | 3 | 4;
+type Paso = 1 | 2 | 3 | 4 | 5 | 6;
 
 // Crear iconos personalizados
 const createIcon = (color: string, label: string) => {
@@ -66,36 +68,6 @@ const createIcon = (color: string, label: string) => {
 
 const iconOrigen = createIcon("#4CAF50", "A");
 const iconDestino = createIcon("#f44336", "B");
-const createTransferIcon = (num: number) => createIcon("#FF9800", `T${num}`);
-
-// Función para obtener ruta de OSRM
-async function fetchRoute(points: Punto[]): Promise<[number, number][] | null> {
-  if (points.length < 2) return null;
-
-  // Formato: lng,lat;lng,lat;...
-  const coordinates = points.map((p) => `${p.lng},${p.lat}`).join(";");
-
-  try {
-    const response = await fetch(
-      `https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson`
-    );
-
-    if (!response.ok) return null;
-
-    const data = await response.json();
-
-    if (data.code !== "Ok" || !data.routes?.[0]?.geometry?.coordinates) {
-      return null;
-    }
-
-    // OSRM devuelve [lng, lat], necesitamos [lat, lng] para Leaflet
-    return data.routes[0].geometry.coordinates.map(
-      (coord: [number, number]) => [coord[1], coord[0]] as [number, number]
-    );
-  } catch {
-    return null;
-  }
-}
 
 // Componente para manejar clics en el mapa
 function MapClickHandler({
@@ -134,57 +106,27 @@ export default function MapaMovilidad() {
   const [paso, setPaso] = useState<Paso>(1);
   const [origen, setOrigen] = useState<Punto | null>(null);
   const [destino, setDestino] = useState<Punto | null>(null);
-  const [transbordos, setTransbordos] = useState<Punto[]>([]);
-  const [tieneTransbordos, setTieneTransbordos] = useState(false);
-  const [agregandoTransbordo, setAgregandoTransbordo] = useState(false);
-
-  // Estado de la ruta
-  const [rutaCoords, setRutaCoords] = useState<[number, number][] | null>(null);
-  const [cargandoRuta, setCargandoRuta] = useState(false);
 
   // Estado del formulario
   const [formData, setFormData] = useState<FormData>({
     gastoDiario: "",
     motivoViaje: "",
+    tiempoIda: "",
+    tiempoRegreso: "",
   });
 
   // Estado de envío
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
 
-  // Calcular ruta cuando cambian los puntos
-  useEffect(() => {
-    const calcularRuta = async () => {
-      const puntos: Punto[] = [];
-      if (origen) puntos.push(origen);
-      puntos.push(...transbordos);
-      if (destino) puntos.push(destino);
-
-      if (puntos.length >= 2) {
-        setCargandoRuta(true);
-        const ruta = await fetchRoute(puntos);
-        setRutaCoords(ruta);
-        setCargandoRuta(false);
-      } else {
-        setRutaCoords(null);
-      }
-    };
-
-    calcularRuta();
-  }, [origen, destino, transbordos]);
-
   // Función para obtener dirección de un punto
-  const obtenerDireccion = useCallback(async (punto: Punto, tipo: "origen" | "destino" | "transbordo", index?: number) => {
+  const obtenerDireccion = useCallback(async (punto: Punto, tipo: "origen" | "destino") => {
     const direccion = await reverseGeocode(punto.lat, punto.lng);
 
     if (tipo === "origen") {
       setOrigen(prev => prev ? { ...prev, direccion, cargandoDireccion: false } : null);
-    } else if (tipo === "destino") {
+    } else {
       setDestino(prev => prev ? { ...prev, direccion, cargandoDireccion: false } : null);
-    } else if (tipo === "transbordo" && index !== undefined) {
-      setTransbordos(prev => prev.map((t, i) =>
-        i === index ? { ...t, direccion, cargandoDireccion: false } : t
-      ));
     }
   }, []);
 
@@ -196,48 +138,29 @@ export default function MapaMovilidad() {
       if (paso === 1 && !origen) {
         setOrigen(nuevoPunto);
         obtenerDireccion(nuevoPunto, "origen");
-      } else if (paso === 2 && !destino && !agregandoTransbordo) {
+      } else if (paso === 2 && !destino) {
         setDestino(nuevoPunto);
         obtenerDireccion(nuevoPunto, "destino");
-      } else if (agregandoTransbordo) {
-        const nuevoIndex = transbordos.length;
-        setTransbordos((prev) => [...prev, nuevoPunto]);
-        setAgregandoTransbordo(false);
-        obtenerDireccion(nuevoPunto, "transbordo", nuevoIndex);
       }
     },
-    [paso, origen, destino, agregandoTransbordo, transbordos.length, obtenerDireccion]
+    [paso, origen, destino, obtenerDireccion]
   );
 
   // Avanzar al siguiente paso
   const siguientePaso = () => {
-    if (paso === 1 && origen) {
-      setPaso(2);
-    } else if (paso === 2 && destino) {
-      setPaso(3);
-    }
+    if (paso === 1 && origen) setPaso(2);
+    else if (paso === 2 && destino) setPaso(3);
+    else if (paso === 3 && formData.gastoDiario) setPaso(4);
+    else if (paso === 4 && formData.motivoViaje) setPaso(5);
   };
 
   // Remover punto
-  const removerOrigen = () => {
-    setOrigen(null);
-    setRutaCoords(null);
-  };
-
-  const removerDestino = () => {
-    setDestino(null);
-    setRutaCoords(null);
-  };
-
-  const removerTransbordo = (index: number) => {
-    setTransbordos((prev) => prev.filter((_, i) => i !== index));
-  };
+  const removerOrigen = () => setOrigen(null);
+  const removerDestino = () => setDestino(null);
 
   // Manejar cambios del formulario
   const handleInputChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -256,31 +179,20 @@ export default function MapaMovilidad() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          origen: {
-            lat: origen.lat,
-            lng: origen.lng,
-          },
+          origen: { lat: origen.lat, lng: origen.lng },
           origenDireccion: origen.direccion || null,
-          destino: {
-            lat: destino.lat,
-            lng: destino.lng,
-          },
+          destino: { lat: destino.lat, lng: destino.lng },
           destinoDireccion: destino.direccion || null,
-          transbordos: transbordos.length > 0
-            ? transbordos.map(t => ({
-                lat: t.lat,
-                lng: t.lng,
-                direccion: t.direccion || null,
-              }))
-            : null,
           gastoDiario: parseFloat(formData.gastoDiario),
           motivoViaje: formData.motivoViaje,
+          tiempoIda: formData.tiempoIda || null,
+          tiempoRegreso: formData.tiempoRegreso || null,
         }),
       });
 
       if (response.ok) {
         setEnviado(true);
-        setPaso(4);
+        setPaso(6);
       } else {
         alert("Error al enviar los datos. Por favor intenta de nuevo.");
       }
@@ -295,13 +207,11 @@ export default function MapaMovilidad() {
   const reiniciar = () => {
     setOrigen(null);
     setDestino(null);
-    setTransbordos([]);
-    setTieneTransbordos(false);
-    setAgregandoTransbordo(false);
-    setRutaCoords(null);
     setFormData({
       gastoDiario: "",
       motivoViaje: "",
+      tiempoIda: "",
+      tiempoRegreso: "",
     });
     setEnviado(false);
     setPaso(1);
@@ -309,14 +219,11 @@ export default function MapaMovilidad() {
 
   // Determinar si el clic en el mapa está habilitado
   const mapClickEnabled =
-    (paso === 1 && !origen) ||
-    (paso === 2 && !destino && !agregandoTransbordo) ||
-    agregandoTransbordo;
+    (paso === 1 && !origen) || (paso === 2 && !destino);
 
   // Mensaje para el toast flotante
   const getToastMessage = () => {
     if (paso === 1 && !origen) return "Toca para marcar inicio";
-    if (paso === 2 && agregandoTransbordo) return "Toca para marcar transbordo";
     if (paso === 2 && !destino) return "Toca para marcar destino";
     return null;
   };
@@ -326,7 +233,6 @@ export default function MapaMovilidad() {
   // Puntos para ajustar la vista
   const allPoints: Punto[] = [];
   if (origen) allPoints.push(origen);
-  allPoints.push(...transbordos);
   if (destino) allPoints.push(destino);
 
   return (
@@ -339,17 +245,8 @@ export default function MapaMovilidad() {
       <div className="main-content">
         {/* Mapa */}
         <div className="map-container">
-          {/* Toast de instrucción flotante */}
           {toastMessage && (
             <div className="map-instruction-toast">{toastMessage}</div>
-          )}
-
-          {/* Indicador de carga de ruta */}
-          {cargandoRuta && (
-            <div className="route-loading">
-              <div className="mini-spinner"></div>
-              <span>Calculando ruta...</span>
-            </div>
           )}
 
           <MapContainer
@@ -370,24 +267,17 @@ export default function MapaMovilidad() {
 
             <FitBounds points={allPoints} />
 
-            {/* Ruta por calles */}
-            {rutaCoords && (
+            {/* Línea directa de origen a destino */}
+            {origen && destino && (
               <Polyline
-                positions={rutaCoords}
+                positions={[
+                  [origen.lat, origen.lng],
+                  [destino.lat, destino.lng],
+                ]}
                 color="#2d8f4e"
-                weight={5}
-                opacity={0.8}
-              />
-            )}
-
-            {/* Línea de respaldo si no hay ruta (punteada) */}
-            {!rutaCoords && allPoints.length >= 2 && (
-              <Polyline
-                positions={allPoints.map((p) => [p.lat, p.lng])}
-                color="#999"
                 weight={3}
-                opacity={0.5}
-                dashArray="8, 12"
+                opacity={0.7}
+                dashArray="8, 8"
               />
             )}
 
@@ -399,19 +289,6 @@ export default function MapaMovilidad() {
                 </Popup>
               </Marker>
             )}
-
-            {/* Marcadores de transbordo */}
-            {transbordos.map((t, i) => (
-              <Marker
-                key={i}
-                position={[t.lat, t.lng]}
-                icon={createTransferIcon(i + 1)}
-              >
-                <Popup>
-                  <strong>Transbordo {i + 1}</strong>
-                </Popup>
-              </Marker>
-            ))}
 
             {/* Marcador de destino */}
             {destino && (
@@ -428,7 +305,7 @@ export default function MapaMovilidad() {
         <aside className="sidebar">
           {/* Indicador de pasos */}
           <div className="step-indicator">
-            {[1, 2, 3].map((s) => (
+            {[1, 2, 3, 4, 5].map((s) => (
               <div
                 key={s}
                 className={`step-dot ${paso === s ? "active" : ""} ${
@@ -481,14 +358,12 @@ export default function MapaMovilidad() {
               </>
             )}
 
-            {/* PASO 2: Transbordos y destino */}
+            {/* PASO 2: Seleccionar destino */}
             {paso === 2 && (
               <>
-                <h2 className="step-title">Paso 2: Tu ruta</h2>
+                <h2 className="step-title">Paso 2: Tu destino</h2>
                 <p className="step-description">
-                  {!destino
-                    ? "Marca tu destino. Si haces transbordos, activa la opción."
-                    : "Revisa tu ruta y continúa."}
+                  Toca en el mapa donde termina tu viaje.
                 </p>
 
                 {/* Punto de origen (ya seleccionado) */}
@@ -501,61 +376,6 @@ export default function MapaMovilidad() {
                     </span>
                   </div>
                 </div>
-
-                {/* Checkbox de transbordos */}
-                {!destino && (
-                  <div className="checkbox-group">
-                    <input
-                      type="checkbox"
-                      id="transbordos"
-                      checked={tieneTransbordos}
-                      onChange={(e) => setTieneTransbordos(e.target.checked)}
-                    />
-                    <label htmlFor="transbordos">
-                      Hago transbordos en mi ruta
-                    </label>
-                  </div>
-                )}
-
-                {/* Lista de transbordos */}
-                {transbordos.map((t, i) => (
-                  <div key={i} className="point-info">
-                    <div className="point-marker transfer">T{i + 1}</div>
-                    <div className="point-details">
-                      <span className="point-label">Transbordo {i + 1}</span>
-                      <span className="point-coords">
-                        {t.cargandoDireccion
-                          ? "Obteniendo dirección..."
-                          : t.direccion?.displayName || "Ubicación marcada"}
-                      </span>
-                    </div>
-                    <button
-                      className="btn-remove"
-                      onClick={() => removerTransbordo(i)}
-                      title="Quitar transbordo"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-
-                {/* Botón agregar transbordo */}
-                {tieneTransbordos && !destino && !agregandoTransbordo && (
-                  <button
-                    className="btn btn-outline"
-                    onClick={() => setAgregandoTransbordo(true)}
-                    style={{ marginBottom: "1rem" }}
-                  >
-                    + Agregar transbordo
-                  </button>
-                )}
-
-                {/* Mensaje cuando está agregando transbordo */}
-                {agregandoTransbordo && (
-                  <div className="instruction-box">
-                    <p>Toca en el mapa para marcar el transbordo</p>
-                  </div>
-                )}
 
                 {/* Punto de destino */}
                 {destino ? (
@@ -578,11 +398,9 @@ export default function MapaMovilidad() {
                     </button>
                   </div>
                 ) : (
-                  !agregandoTransbordo && (
-                    <div className="instruction-box">
-                      <p>Toca en el mapa para marcar tu destino</p>
-                    </div>
-                  )
+                  <div className="instruction-box">
+                    <p>Toca en el mapa para marcar tu destino</p>
+                  </div>
                 )}
 
                 {destino && (
@@ -593,12 +411,12 @@ export default function MapaMovilidad() {
               </>
             )}
 
-            {/* PASO 3: Formulario */}
+            {/* PASO 3: Gasto diario */}
             {paso === 3 && (
               <>
-                <h2 className="step-title">Paso 3: Tu viaje</h2>
+                <h2 className="step-title">Paso 3: Gasto en transporte</h2>
                 <p className="step-description">
-                  Cuéntanos sobre tu gasto y motivo de viaje.
+                  ¿Cuánto gastas al día en transporte?
                 </p>
 
                 <div className="form-group">
@@ -618,6 +436,24 @@ export default function MapaMovilidad() {
                     />
                   </div>
                 </div>
+
+                <button
+                  className="btn btn-primary"
+                  onClick={siguientePaso}
+                  disabled={!formData.gastoDiario}
+                >
+                  Continuar
+                </button>
+              </>
+            )}
+
+            {/* PASO 4: Motivo del viaje */}
+            {paso === 4 && (
+              <>
+                <h2 className="step-title">Paso 4: Motivo del viaje</h2>
+                <p className="step-description">
+                  ¿Cuál es el motivo principal de este viaje?
+                </p>
 
                 <div className="form-group">
                   <label htmlFor="motivoViaje">Motivo del viaje</label>
@@ -641,18 +477,64 @@ export default function MapaMovilidad() {
 
                 <button
                   className="btn btn-primary"
+                  onClick={siguientePaso}
+                  disabled={!formData.motivoViaje}
+                >
+                  Continuar
+                </button>
+              </>
+            )}
+
+            {/* PASO 5: Tiempos de ida y regreso */}
+            {paso === 5 && (
+              <>
+                <h2 className="step-title">Paso 5: Tiempo de traslado</h2>
+                <p className="step-description">
+                  ¿Cuánto tiempo te toma este viaje? (en minutos)
+                </p>
+
+                <div className="form-group">
+                  <label htmlFor="tiempoIda">Tiempo de ida (minutos)</label>
+                  <input
+                    type="number"
+                    id="tiempoIda"
+                    name="tiempoIda"
+                    value={formData.tiempoIda}
+                    onChange={handleInputChange}
+                    placeholder="Ej: 45"
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="tiempoRegreso">Tiempo de regreso (minutos)</label>
+                  <input
+                    type="number"
+                    id="tiempoRegreso"
+                    name="tiempoRegreso"
+                    value={formData.tiempoRegreso}
+                    onChange={handleInputChange}
+                    placeholder="Ej: 50"
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                  />
+                </div>
+
+                <button
+                  className="btn btn-primary"
                   onClick={handleSubmit}
-                  disabled={
-                    enviando || !formData.gastoDiario || !formData.motivoViaje
-                  }
+                  disabled={enviando || !formData.tiempoIda || !formData.tiempoRegreso}
                 >
                   {enviando ? "Enviando..." : "Enviar"}
                 </button>
               </>
             )}
 
-            {/* PASO 4: Confirmación */}
-            {paso === 4 && enviado && (
+            {/* PASO 6: Confirmación */}
+            {paso === 6 && enviado && (
               <div className="success-message">
                 <div className="success-icon">✓</div>
                 <h2>¡Gracias!</h2>

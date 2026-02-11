@@ -6,27 +6,15 @@ const isValidCoord = (lat: number, lng: number): boolean => {
   return (
     typeof lat === "number" &&
     typeof lng === "number" &&
-    lat >= 18.5 && lat <= 19.5 && // Rango de latitud para Puebla
-    lng >= -98.5 && lng <= -97.5   // Rango de longitud para Puebla
+    lat >= 18.5 && lat <= 19.5 &&
+    lng >= -98.5 && lng <= -97.5
   );
-};
-
-// Sanitizar string (prevenir inyección)
-const sanitizeString = (str: string | undefined | null, maxLength: number): string | null => {
-  if (!str) return null;
-  return String(str).slice(0, maxLength).trim();
 };
 
 // Motivos de viaje permitidos
 const MOTIVOS_VALIDOS = [
   "trabajo", "escuela", "casa", "compras",
   "salud", "tramites", "recreacion", "otro"
-];
-
-// Medios de transporte permitidos
-const TRANSPORTES_VALIDOS = [
-  "ruta", "linea", "taxi", "uber",
-  "bicicleta", "caminando", "auto_propio", "otro"
 ];
 
 export async function POST(request: NextRequest) {
@@ -38,11 +26,10 @@ export async function POST(request: NextRequest) {
       origenDireccion,
       destino,
       destinoDireccion,
-      transbordos,
       gastoDiario,
       motivoViaje,
-      medioTransporte,
-      comentarios,
+      tiempoIda,
+      tiempoRegreso,
     } = body;
 
     // Validación de campos requeridos
@@ -86,33 +73,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validar medio de transporte (si se proporciona)
-    if (medioTransporte && !TRANSPORTES_VALIDOS.includes(medioTransporte)) {
+    // Validar tiempos (minutos, opcional pero razonable)
+    const tiempoIdaNum = tiempoIda ? parseInt(tiempoIda) : null;
+    const tiempoRegresoNum = tiempoRegreso ? parseInt(tiempoRegreso) : null;
+
+    if (tiempoIdaNum !== null && (isNaN(tiempoIdaNum) || tiempoIdaNum < 0 || tiempoIdaNum > 600)) {
       return NextResponse.json(
-        { error: "Medio de transporte inválido" },
+        { error: "Tiempo de ida inválido" },
         { status: 400 }
       );
     }
 
-    // Validar transbordos (si existen)
-    let transbordosValidados: object[] | undefined = undefined;
-    if (transbordos && Array.isArray(transbordos)) {
-      if (transbordos.length > 10) {
-        return NextResponse.json(
-          { error: "Demasiados transbordos" },
-          { status: 400 }
-        );
-      }
-
-      for (const t of transbordos) {
-        if (!isValidCoord(t.lat, t.lng)) {
-          return NextResponse.json(
-            { error: "Coordenadas de transbordo inválidas" },
-            { status: 400 }
-          );
-        }
-      }
-      transbordosValidados = transbordos;
+    if (tiempoRegresoNum !== null && (isNaN(tiempoRegresoNum) || tiempoRegresoNum < 0 || tiempoRegresoNum > 600)) {
+      return NextResponse.json(
+        { error: "Tiempo de regreso inválido" },
+        { status: 400 }
+      );
     }
 
     // Crear el registro en la base de datos
@@ -124,11 +100,10 @@ export async function POST(request: NextRequest) {
         destinoLat: destino.lat,
         destinoLng: destino.lng,
         destinoDireccion: destinoDireccion || undefined,
-        transbordos: transbordosValidados,
         gastoDiario: gastoNum,
         motivoViaje,
-        medioTransporte: medioTransporte || null,
-        comentarios: sanitizeString(comentarios, 500),
+        tiempoIda: tiempoIdaNum,
+        tiempoRegreso: tiempoRegresoNum,
       },
     });
 

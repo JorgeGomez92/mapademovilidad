@@ -21,12 +21,14 @@ model Viaje {
   destinoLng      Float
   destinoDireccion Json?   // {calle, numero, colonia, cp, ciudad}
 
-  // Puntos de transbordo (JSON array de {lat, lng, direccion})
+  // Puntos de transbordo (legacy, ya no se usa en el formulario)
   transbordos     Json?
 
   // Datos del formulario
   gastoDiario     Float
   motivoViaje     String
+  tiempoIda       Int?     // Minutos de ida
+  tiempoRegreso   Int?     // Minutos de regreso
   medioTransporte String?
 
   // Metadata opcional
