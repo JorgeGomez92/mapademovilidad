@@ -47,6 +47,8 @@ const MEDIOS_TRANSPORTE = [
   { value: "van", label: "Van / Combi" },
   { value: "camion", label: "Camión" },
   { value: "microbus", label: "Microbús" },
+  { value: "colectivo", label: "Colectivo" },
+  { value: "otro", label: "Otro" },
 ];
 
 const SATISFACCION_OPCIONES = [
@@ -279,13 +281,7 @@ export default function MapaMovilidad() {
   return (
     <div className="container">
       <header className="header">
-        <h1>Mapa de Movilidad Urbana</h1>
-        <p className="header-subtitle">Periférico Ecológico de Puebla</p>
-        <p className="header-objetivo">
-          Tu participación nos ayudará a producir los datos necesarios para
-          poder diseñar estrategias de transporte público que de verdad puedan
-          atender las necesidades de todos.
-        </p>
+        <span>Mapa de Movilidad Urbana &mdash; Puebla</span>
       </header>
 
       <div className="main-content">

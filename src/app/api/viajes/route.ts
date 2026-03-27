@@ -20,6 +20,7 @@ const MOTIVOS_VALIDOS = [
 const MEDIOS_VALIDOS = [
   "linea1", "linea2", "linea3", "linea4",
   "alimentadora", "van", "camion", "microbus",
+  "colectivo", "otro",
 ];
 
 export async function POST(request: NextRequest) {

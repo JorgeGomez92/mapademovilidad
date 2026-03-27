@@ -11,6 +11,8 @@ const MEDIOS_NOMBRES: Record<string, string> = {
   van: "Van / Combi",
   camion: "Camión",
   microbus: "Microbús",
+  colectivo: "Colectivo",
+  otro: "Otro",
 };
 
 export async function GET(request: NextRequest) {

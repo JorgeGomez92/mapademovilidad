@@ -22,6 +22,8 @@ const MEDIOS_NOMBRES: Record<string, string> = {
   van: "Van / Combi",
   camion: "Camión",
   microbus: "Microbús",
+  colectivo: "Colectivo",
+  otro: "Otro",
 };
 
 const SATISFACCION_LABELS: Record<number, string> = {
