@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAuthenticated } from "@/lib/auth";
 
-// Nombres legibles para motivos de viaje
 const MOTIVOS_NOMBRES: Record<string, string> = {
   trabajo: "Trabajo",
   escuela: "Escuela",
@@ -14,6 +13,25 @@ const MOTIVOS_NOMBRES: Record<string, string> = {
   otro: "Otro",
 };
 
+const MEDIOS_NOMBRES: Record<string, string> = {
+  linea1: "Línea 1 RUTA",
+  linea2: "Línea 2 RUTA",
+  linea3: "Línea 3 RUTA",
+  linea4: "Línea 4 RUTA",
+  alimentadora: "Alimentadora",
+  van: "Van / Combi",
+  camion: "Camión",
+  microbus: "Microbús",
+};
+
+const SATISFACCION_LABELS: Record<number, string> = {
+  1: "Nada satisfecho",
+  2: "Poco satisfecho",
+  3: "Medianamente satisfecho",
+  4: "Muy satisfecho",
+  5: "Completamente satisfecho",
+};
+
 export async function GET(request: NextRequest) {
   const authenticated = await isAuthenticated();
   if (!authenticated) {
@@ -23,7 +41,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const format = searchParams.get("format") || "geojson";
-    const type = searchParams.get("type") || "all"; // all, origins, destinations
+    const type = searchParams.get("type") || "all";
 
     const viajes = await prisma.viaje.findMany({
       orderBy: { createdAt: "desc" },
@@ -48,21 +66,29 @@ interface Viaje {
   createdAt: Date;
   origenLat: number;
   origenLng: number;
-  origenDireccion?: unknown;
+  origenDireccion: unknown;
   destinoLat: number;
   destinoLng: number;
-  destinoDireccion?: unknown;
+  destinoDireccion: unknown;
   gastoDiario: number;
   motivoViaje: string;
-  tiempoIda?: number | null;
-  tiempoRegreso?: number | null;
+  tiempoIda: number | null;
+  tiempoRegreso: number | null;
+  mediosTransporte: unknown;
+  transbordosIda: number;
+  transbordosRegreso: number;
+  satisfaccion: number;
 }
 
-// Extraer displayName del objeto Direccion guardado por Nominatim
 function getDireccion(dir: unknown): string {
   if (!dir || typeof dir !== "object") return "";
   const d = dir as { displayName?: string };
   return d.displayName || "";
+}
+
+function getMediosLabel(medios: unknown): string {
+  if (!Array.isArray(medios)) return "";
+  return medios.map((m: string) => MEDIOS_NOMBRES[m] || m).join(", ");
 }
 
 function exportGeoJSON(viajes: Viaje[], type: string) {
@@ -76,6 +102,11 @@ function exportGeoJSON(viajes: Viaje[], type: string) {
       motivo: MOTIVOS_NOMBRES[viaje.motivoViaje] || viaje.motivoViaje,
       tiempo_ida_min: viaje.tiempoIda ?? "",
       tiempo_regreso_min: viaje.tiempoRegreso ?? "",
+      medios_transporte: getMediosLabel(viaje.mediosTransporte),
+      transbordos_ida: viaje.transbordosIda,
+      transbordos_regreso: viaje.transbordosRegreso,
+      satisfaccion: viaje.satisfaccion,
+      satisfaccion_texto: SATISFACCION_LABELS[viaje.satisfaccion] || "",
       fecha: viaje.createdAt.toISOString(),
     };
 
@@ -123,13 +154,11 @@ function exportGeoJSON(viajes: Viaje[], type: string) {
   });
 }
 
-// CSV: una fila por viaje con origen y destino en la misma fila
 function exportCSV(viajes: Viaje[]) {
   const rows: string[] = [];
 
-  // Header descriptivo: una fila por viaje
   rows.push(
-    "id,origen_lat,origen_lng,origen_direccion,destino_lat,destino_lng,destino_direccion,gasto_diario,motivo,tiempo_ida_min,tiempo_regreso_min,fecha"
+    "id,origen_lat,origen_lng,origen_direccion,destino_lat,destino_lng,destino_direccion,gasto_diario,motivo,tiempo_ida_min,tiempo_regreso_min,medios_transporte,transbordos_ida,transbordos_regreso,satisfaccion,satisfaccion_texto,fecha"
   );
 
   viajes.forEach((viaje) => {
@@ -151,6 +180,11 @@ function exportCSV(viajes: Viaje[]) {
         esc(MOTIVOS_NOMBRES[viaje.motivoViaje] || viaje.motivoViaje),
         viaje.tiempoIda ?? "",
         viaje.tiempoRegreso ?? "",
+        esc(getMediosLabel(viaje.mediosTransporte)),
+        viaje.transbordosIda,
+        viaje.transbordosRegreso,
+        viaje.satisfaccion,
+        esc(SATISFACCION_LABELS[viaje.satisfaccion] || ""),
         esc(viaje.createdAt.toISOString()),
       ].join(",")
     );
@@ -158,7 +192,7 @@ function exportCSV(viajes: Viaje[]) {
 
   return new NextResponse(rows.join("\n"), {
     headers: {
-      "Content-Type": "text/csv",
+      "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="viajes_movilidad.csv"`,
     },
   });

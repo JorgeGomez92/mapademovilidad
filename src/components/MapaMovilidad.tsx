@@ -14,11 +14,9 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { reverseGeocode, Direccion } from "@/lib/geocoding";
 
-// Coordenadas del Periférico Ecológico de Puebla (centro aproximado)
 const PUEBLA_CENTER: [number, number] = [19.0414, -98.2063];
 const PUEBLA_ZOOM = 13;
 
-// Tipos
 interface Punto {
   lat: number;
   lng: number;
@@ -31,11 +29,34 @@ interface FormData {
   motivoViaje: string;
   tiempoIda: string;
   tiempoRegreso: string;
+  mediosTransporte: string[];
+  transbordosIda: string;
+  transbordosRegreso: string;
+  satisfaccion: string;
 }
 
-type Paso = 1 | 2 | 3 | 4 | 5 | 6;
+const TOTAL_PASOS = 8;
+type Paso = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 
-// Crear iconos personalizados
+const MEDIOS_TRANSPORTE = [
+  { value: "linea1", label: "Línea 1 RUTA" },
+  { value: "linea2", label: "Línea 2 RUTA" },
+  { value: "linea3", label: "Línea 3 RUTA" },
+  { value: "linea4", label: "Línea 4 RUTA" },
+  { value: "alimentadora", label: "Alimentadora RUTA" },
+  { value: "van", label: "Van / Combi" },
+  { value: "camion", label: "Camión" },
+  { value: "microbus", label: "Microbús" },
+];
+
+const SATISFACCION_OPCIONES = [
+  { value: 1, label: "Nada satisfecho" },
+  { value: 2, label: "Poco satisfecho" },
+  { value: 3, label: "Medianamente satisfecho" },
+  { value: 4, label: "Muy satisfecho" },
+  { value: 5, label: "Completamente satisfecho" },
+];
+
 const createIcon = (color: string, label: string) => {
   return L.divIcon({
     className: "custom-div-icon",
@@ -69,7 +90,6 @@ const createIcon = (color: string, label: string) => {
 const iconOrigen = createIcon("#4CAF50", "A");
 const iconDestino = createIcon("#f44336", "B");
 
-// Componente para manejar clics en el mapa
 function MapClickHandler({
   onMapClick,
   isEnabled,
@@ -87,7 +107,6 @@ function MapClickHandler({
   return null;
 }
 
-// Componente para ajustar vista del mapa a los puntos
 function FitBounds({ points }: { points: Punto[] }) {
   const map = useMap();
 
@@ -102,39 +121,42 @@ function FitBounds({ points }: { points: Punto[] }) {
 }
 
 export default function MapaMovilidad() {
-  // Estado del flujo
   const [paso, setPaso] = useState<Paso>(1);
   const [origen, setOrigen] = useState<Punto | null>(null);
   const [destino, setDestino] = useState<Punto | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [enviado, setEnviado] = useState(false);
 
-  // Estado del formulario
   const [formData, setFormData] = useState<FormData>({
     gastoDiario: "",
     motivoViaje: "",
     tiempoIda: "",
     tiempoRegreso: "",
+    mediosTransporte: [],
+    transbordosIda: "",
+    transbordosRegreso: "",
+    satisfaccion: "",
   });
 
-  // Estado de envío
-  const [enviando, setEnviando] = useState(false);
-  const [enviado, setEnviado] = useState(false);
+  const obtenerDireccion = useCallback(
+    async (punto: Punto, tipo: "origen" | "destino") => {
+      const direccion = await reverseGeocode(punto.lat, punto.lng);
+      if (tipo === "origen") {
+        setOrigen((prev) =>
+          prev ? { ...prev, direccion, cargandoDireccion: false } : null
+        );
+      } else {
+        setDestino((prev) =>
+          prev ? { ...prev, direccion, cargandoDireccion: false } : null
+        );
+      }
+    },
+    []
+  );
 
-  // Función para obtener dirección de un punto
-  const obtenerDireccion = useCallback(async (punto: Punto, tipo: "origen" | "destino") => {
-    const direccion = await reverseGeocode(punto.lat, punto.lng);
-
-    if (tipo === "origen") {
-      setOrigen(prev => prev ? { ...prev, direccion, cargandoDireccion: false } : null);
-    } else {
-      setDestino(prev => prev ? { ...prev, direccion, cargandoDireccion: false } : null);
-    }
-  }, []);
-
-  // Manejar clic en el mapa
   const handleMapClick = useCallback(
     (lat: number, lng: number) => {
       const nuevoPunto: Punto = { lat, lng, cargandoDireccion: true };
-
       if (paso === 1 && !origen) {
         setOrigen(nuevoPunto);
         obtenerDireccion(nuevoPunto, "origen");
@@ -146,19 +168,19 @@ export default function MapaMovilidad() {
     [paso, origen, destino, obtenerDireccion]
   );
 
-  // Avanzar al siguiente paso
   const siguientePaso = () => {
     if (paso === 1 && origen) setPaso(2);
     else if (paso === 2 && destino) setPaso(3);
-    else if (paso === 3 && formData.gastoDiario) setPaso(4);
-    else if (paso === 4 && formData.motivoViaje) setPaso(5);
+    else if (paso === 3 && formData.mediosTransporte.length > 0) setPaso(4);
+    else if (paso === 4 && formData.transbordosIda !== "" && formData.transbordosRegreso !== "") setPaso(5);
+    else if (paso === 5 && formData.gastoDiario) setPaso(6);
+    else if (paso === 6 && formData.motivoViaje) setPaso(7);
+    else if (paso === 7 && formData.tiempoIda && formData.tiempoRegreso) setPaso(8);
   };
 
-  // Remover punto
   const removerOrigen = () => setOrigen(null);
   const removerDestino = () => setDestino(null);
 
-  // Manejar cambios del formulario
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
@@ -166,9 +188,24 @@ export default function MapaMovilidad() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  // Enviar datos
+  const toggleMedioTransporte = (value: string) => {
+    setFormData((prev) => {
+      const medios = prev.mediosTransporte.includes(value)
+        ? prev.mediosTransporte.filter((m) => m !== value)
+        : [...prev.mediosTransporte, value];
+      return { ...prev, mediosTransporte: medios };
+    });
+  };
+
   const handleSubmit = async () => {
-    if (!origen || !destino || !formData.gastoDiario || !formData.motivoViaje) {
+    if (
+      !origen ||
+      !destino ||
+      !formData.gastoDiario ||
+      !formData.motivoViaje ||
+      !formData.satisfaccion ||
+      formData.mediosTransporte.length === 0
+    ) {
       return;
     }
 
@@ -185,14 +222,18 @@ export default function MapaMovilidad() {
           destinoDireccion: destino.direccion || null,
           gastoDiario: parseFloat(formData.gastoDiario),
           motivoViaje: formData.motivoViaje,
-          tiempoIda: formData.tiempoIda || null,
-          tiempoRegreso: formData.tiempoRegreso || null,
+          tiempoIda: formData.tiempoIda ? parseInt(formData.tiempoIda) : null,
+          tiempoRegreso: formData.tiempoRegreso ? parseInt(formData.tiempoRegreso) : null,
+          mediosTransporte: formData.mediosTransporte,
+          transbordosIda: parseInt(formData.transbordosIda),
+          transbordosRegreso: parseInt(formData.transbordosRegreso),
+          satisfaccion: parseInt(formData.satisfaccion),
         }),
       });
 
       if (response.ok) {
         setEnviado(true);
-        setPaso(6);
+        setPaso(9);
       } else {
         alert("Error al enviar los datos. Por favor intenta de nuevo.");
       }
@@ -203,7 +244,6 @@ export default function MapaMovilidad() {
     }
   };
 
-  // Reiniciar todo
   const reiniciar = () => {
     setOrigen(null);
     setDestino(null);
@@ -212,16 +252,18 @@ export default function MapaMovilidad() {
       motivoViaje: "",
       tiempoIda: "",
       tiempoRegreso: "",
+      mediosTransporte: [],
+      transbordosIda: "",
+      transbordosRegreso: "",
+      satisfaccion: "",
     });
     setEnviado(false);
     setPaso(1);
   };
 
-  // Determinar si el clic en el mapa está habilitado
   const mapClickEnabled =
     (paso === 1 && !origen) || (paso === 2 && !destino);
 
-  // Mensaje para el toast flotante
   const getToastMessage = () => {
     if (paso === 1 && !origen) return "Toca para marcar inicio";
     if (paso === 2 && !destino) return "Toca para marcar destino";
@@ -230,7 +272,6 @@ export default function MapaMovilidad() {
 
   const toastMessage = getToastMessage();
 
-  // Puntos para ajustar la vista
   const allPoints: Punto[] = [];
   if (origen) allPoints.push(origen);
   if (destino) allPoints.push(destino);
@@ -239,11 +280,15 @@ export default function MapaMovilidad() {
     <div className="container">
       <header className="header">
         <h1>Mapa de Movilidad Urbana</h1>
-        <p>Periférico Ecológico de Puebla</p>
+        <p className="header-subtitle">Periférico Ecológico de Puebla</p>
+        <p className="header-objetivo">
+          Tu participación nos ayudará a producir los datos necesarios para
+          poder diseñar estrategias de transporte público que de verdad puedan
+          atender las necesidades de todos.
+        </p>
       </header>
 
       <div className="main-content">
-        {/* Mapa */}
         <div className="map-container">
           {toastMessage && (
             <div className="map-instruction-toast">{toastMessage}</div>
@@ -259,15 +304,12 @@ export default function MapaMovilidad() {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-
             <MapClickHandler
               onMapClick={handleMapClick}
               isEnabled={mapClickEnabled}
             />
-
             <FitBounds points={allPoints} />
 
-            {/* Línea directa de origen a destino */}
             {origen && destino && (
               <Polyline
                 positions={[
@@ -281,7 +323,6 @@ export default function MapaMovilidad() {
               />
             )}
 
-            {/* Marcador de origen */}
             {origen && (
               <Marker position={[origen.lat, origen.lng]} icon={iconOrigen}>
                 <Popup>
@@ -290,7 +331,6 @@ export default function MapaMovilidad() {
               </Marker>
             )}
 
-            {/* Marcador de destino */}
             {destino && (
               <Marker position={[destino.lat, destino.lng]} icon={iconDestino}>
                 <Popup>
@@ -301,11 +341,10 @@ export default function MapaMovilidad() {
           </MapContainer>
         </div>
 
-        {/* Sidebar / Panel inferior en móvil */}
         <aside className="sidebar">
           {/* Indicador de pasos */}
           <div className="step-indicator">
-            {[1, 2, 3, 4, 5].map((s) => (
+            {Array.from({ length: TOTAL_PASOS }, (_, i) => i + 1).map((s) => (
               <div
                 key={s}
                 className={`step-dot ${paso === s ? "active" : ""} ${
@@ -315,7 +354,6 @@ export default function MapaMovilidad() {
             ))}
           </div>
 
-          {/* Contenido según el paso */}
           <div className="step-content">
             {/* PASO 1: Seleccionar origen */}
             {paso === 1 && (
@@ -338,7 +376,8 @@ export default function MapaMovilidad() {
                         <span className="point-coords">
                           {origen.cargandoDireccion
                             ? "Obteniendo dirección..."
-                            : origen.direccion?.displayName || "Ubicación marcada"}
+                            : origen.direccion?.displayName ||
+                              "Ubicación marcada"}
                         </span>
                       </div>
                       <button
@@ -349,8 +388,10 @@ export default function MapaMovilidad() {
                         ×
                       </button>
                     </div>
-
-                    <button className="btn btn-primary" onClick={siguientePaso}>
+                    <button
+                      className="btn btn-primary"
+                      onClick={siguientePaso}
+                    >
                       Continuar
                     </button>
                   </>
@@ -366,7 +407,6 @@ export default function MapaMovilidad() {
                   Toca en el mapa donde termina tu viaje.
                 </p>
 
-                {/* Punto de origen (ya seleccionado) */}
                 <div className="point-info">
                   <div className="point-marker origin">A</div>
                   <div className="point-details">
@@ -377,7 +417,6 @@ export default function MapaMovilidad() {
                   </div>
                 </div>
 
-                {/* Punto de destino */}
                 {destino ? (
                   <div className="point-info">
                     <div className="point-marker destination">B</div>
@@ -386,7 +425,8 @@ export default function MapaMovilidad() {
                       <span className="point-coords">
                         {destino.cargandoDireccion
                           ? "Obteniendo dirección..."
-                          : destino.direccion?.displayName || "Ubicación marcada"}
+                          : destino.direccion?.displayName ||
+                            "Ubicación marcada"}
                       </span>
                     </div>
                     <button
@@ -411,10 +451,119 @@ export default function MapaMovilidad() {
               </>
             )}
 
-            {/* PASO 3: Gasto diario */}
+            {/* PASO 3: Medio de transporte */}
             {paso === 3 && (
               <>
-                <h2 className="step-title">Paso 3: Gasto en transporte</h2>
+                <h2 className="step-title">Paso 3: Medio de transporte</h2>
+                <p className="step-description">
+                  ¿Qué transporte utilizas? Puedes seleccionar varios.
+                </p>
+
+                <div className="checkbox-grid">
+                  {MEDIOS_TRANSPORTE.map((medio) => (
+                    <label
+                      key={medio.value}
+                      className={`checkbox-card ${
+                        formData.mediosTransporte.includes(medio.value)
+                          ? "selected"
+                          : ""
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={formData.mediosTransporte.includes(
+                          medio.value
+                        )}
+                        onChange={() => toggleMedioTransporte(medio.value)}
+                      />
+                      <span>{medio.label}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <button
+                  className="btn btn-primary"
+                  onClick={siguientePaso}
+                  disabled={formData.mediosTransporte.length === 0}
+                >
+                  Continuar
+                </button>
+              </>
+            )}
+
+            {/* PASO 4: Transbordos */}
+            {paso === 4 && (
+              <>
+                <h2 className="step-title">Paso 4: Transbordos</h2>
+                <p className="step-description">
+                  ¿Cuántas veces transbordas (cambias de unidad) en tu viaje?
+                </p>
+
+                <div className="form-group">
+                  <label>Transbordos en viaje de ida</label>
+                  <div className="option-buttons">
+                    {[0, 1, 2, 3].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        className={`option-btn ${
+                          formData.transbordosIda === String(n) ? "selected" : ""
+                        }`}
+                        onClick={() =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            transbordosIda: String(n),
+                          }))
+                        }
+                      >
+                        {n === 0 ? "Ninguno" : n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label>Transbordos en viaje de regreso</label>
+                  <div className="option-buttons">
+                    {[0, 1, 2, 3].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        className={`option-btn ${
+                          formData.transbordosRegreso === String(n)
+                            ? "selected"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            transbordosRegreso: String(n),
+                          }))
+                        }
+                      >
+                        {n === 0 ? "Ninguno" : n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  className="btn btn-primary"
+                  onClick={siguientePaso}
+                  disabled={
+                    formData.transbordosIda === "" ||
+                    formData.transbordosRegreso === ""
+                  }
+                >
+                  Continuar
+                </button>
+              </>
+            )}
+
+            {/* PASO 5: Gasto diario */}
+            {paso === 5 && (
+              <>
+                <h2 className="step-title">Paso 5: Gasto en transporte</h2>
                 <p className="step-description">
                   ¿Cuánto gastas al día en transporte?
                 </p>
@@ -447,10 +596,10 @@ export default function MapaMovilidad() {
               </>
             )}
 
-            {/* PASO 4: Motivo del viaje */}
-            {paso === 4 && (
+            {/* PASO 6: Motivo del viaje */}
+            {paso === 6 && (
               <>
-                <h2 className="step-title">Paso 4: Motivo del viaje</h2>
+                <h2 className="step-title">Paso 6: Motivo del viaje</h2>
                 <p className="step-description">
                   ¿Cuál es el motivo principal de este viaje?
                 </p>
@@ -485,10 +634,10 @@ export default function MapaMovilidad() {
               </>
             )}
 
-            {/* PASO 5: Tiempos de ida y regreso */}
-            {paso === 5 && (
+            {/* PASO 7: Tiempos de ida y regreso */}
+            {paso === 7 && (
               <>
-                <h2 className="step-title">Paso 5: Tiempo de traslado</h2>
+                <h2 className="step-title">Paso 7: Tiempo de traslado</h2>
                 <p className="step-description">
                   ¿Cuánto tiempo te toma este viaje? (en minutos)
                 </p>
@@ -509,7 +658,9 @@ export default function MapaMovilidad() {
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="tiempoRegreso">Tiempo de regreso (minutos)</label>
+                  <label htmlFor="tiempoRegreso">
+                    Tiempo de regreso (minutos)
+                  </label>
                   <input
                     type="number"
                     id="tiempoRegreso"
@@ -525,22 +676,66 @@ export default function MapaMovilidad() {
 
                 <button
                   className="btn btn-primary"
-                  onClick={handleSubmit}
-                  disabled={enviando || !formData.tiempoIda || !formData.tiempoRegreso}
+                  onClick={siguientePaso}
+                  disabled={!formData.tiempoIda || !formData.tiempoRegreso}
                 >
-                  {enviando ? "Enviando..." : "Enviar"}
+                  Continuar
                 </button>
               </>
             )}
 
-            {/* PASO 6: Confirmación */}
-            {paso === 6 && enviado && (
+            {/* PASO 8: Satisfacción (Likert) */}
+            {paso === 8 && (
+              <>
+                <h2 className="step-title">Paso 8: Satisfacción</h2>
+                <p className="step-description">
+                  ¿Qué tan satisfecho estás con el servicio de transporte
+                  público en general?
+                </p>
+
+                <div className="likert-scale">
+                  {SATISFACCION_OPCIONES.map((opcion) => (
+                    <label
+                      key={opcion.value}
+                      className={`likert-option ${
+                        formData.satisfaccion === String(opcion.value)
+                          ? "selected"
+                          : ""
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="satisfaccion"
+                        value={opcion.value}
+                        checked={
+                          formData.satisfaccion === String(opcion.value)
+                        }
+                        onChange={handleInputChange}
+                      />
+                      <span className="likert-number">{opcion.value}</span>
+                      <span className="likert-label">{opcion.label}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <button
+                  className="btn btn-primary"
+                  onClick={handleSubmit}
+                  disabled={enviando || !formData.satisfaccion}
+                >
+                  {enviando ? "Enviando..." : "Enviar encuesta"}
+                </button>
+              </>
+            )}
+
+            {/* PASO 9: Confirmación */}
+            {paso === 9 && enviado && (
               <div className="success-message">
                 <div className="success-icon">✓</div>
-                <h2>¡Gracias!</h2>
+                <h2>¡Gracias por participar!</h2>
                 <p>
-                  Tu información ayudará a mejorar el transporte en el
-                  Periférico Ecológico.
+                  Tu información ayudará a diseñar mejores estrategias de
+                  transporte público para el Periférico Ecológico.
                 </p>
                 <button className="btn btn-primary" onClick={reiniciar}>
                   Registrar otro viaje
@@ -551,7 +746,6 @@ export default function MapaMovilidad() {
         </aside>
       </div>
 
-      {/* Overlay de carga */}
       {enviando && (
         <div className="loading-overlay">
           <div className="spinner"></div>

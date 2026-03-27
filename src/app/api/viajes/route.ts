@@ -1,20 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// Validar coordenadas (Puebla aproximadamente)
 const isValidCoord = (lat: number, lng: number): boolean => {
   return (
     typeof lat === "number" &&
     typeof lng === "number" &&
-    lat >= 18.5 && lat <= 19.5 &&
-    lng >= -98.5 && lng <= -97.5
+    lat >= 18.5 &&
+    lat <= 19.5 &&
+    lng >= -98.5 &&
+    lng <= -97.5
   );
 };
 
-// Motivos de viaje permitidos
 const MOTIVOS_VALIDOS = [
   "trabajo", "escuela", "casa", "compras",
-  "salud", "tramites", "recreacion", "otro"
+  "salud", "tramites", "recreacion", "otro",
+];
+
+const MEDIOS_VALIDOS = [
+  "linea1", "linea2", "linea3", "linea4",
+  "alimentadora", "van", "camion", "microbus",
 ];
 
 export async function POST(request: NextRequest) {
@@ -30,17 +35,30 @@ export async function POST(request: NextRequest) {
       motivoViaje,
       tiempoIda,
       tiempoRegreso,
+      mediosTransporte,
+      transbordosIda,
+      transbordosRegreso,
+      satisfaccion,
     } = body;
 
     // Validación de campos requeridos
-    if (!origen || !destino || gastoDiario === undefined || !motivoViaje) {
+    if (
+      !origen ||
+      !destino ||
+      gastoDiario === undefined ||
+      !motivoViaje ||
+      !mediosTransporte ||
+      transbordosIda === undefined ||
+      transbordosRegreso === undefined ||
+      !satisfaccion
+    ) {
       return NextResponse.json(
         { error: "Faltan campos requeridos" },
         { status: 400 }
       );
     }
 
-    // Validar coordenadas de origen
+    // Validar coordenadas
     if (!isValidCoord(origen.lat, origen.lng)) {
       return NextResponse.json(
         { error: "Coordenadas de origen inválidas" },
@@ -48,7 +66,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validar coordenadas de destino
     if (!isValidCoord(destino.lat, destino.lng)) {
       return NextResponse.json(
         { error: "Coordenadas de destino inválidas" },
@@ -56,7 +73,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validar gasto diario (número positivo razonable)
+    // Validar gasto diario
     const gastoNum = parseFloat(gastoDiario);
     if (isNaN(gastoNum) || gastoNum < 0 || gastoNum > 10000) {
       return NextResponse.json(
@@ -73,7 +90,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validar tiempos (minutos, opcional pero razonable)
+    // Validar medios de transporte
+    if (
+      !Array.isArray(mediosTransporte) ||
+      mediosTransporte.length === 0 ||
+      !mediosTransporte.every((m: string) => MEDIOS_VALIDOS.includes(m))
+    ) {
+      return NextResponse.json(
+        { error: "Medios de transporte inválidos" },
+        { status: 400 }
+      );
+    }
+
+    // Validar transbordos (0-3)
+    const transbordosIdaNum = parseInt(transbordosIda);
+    const transbordosRegresoNum = parseInt(transbordosRegreso);
+    if (
+      isNaN(transbordosIdaNum) || transbordosIdaNum < 0 || transbordosIdaNum > 3 ||
+      isNaN(transbordosRegresoNum) || transbordosRegresoNum < 0 || transbordosRegresoNum > 3
+    ) {
+      return NextResponse.json(
+        { error: "Número de transbordos inválido" },
+        { status: 400 }
+      );
+    }
+
+    // Validar satisfacción (1-5)
+    const satisfaccionNum = parseInt(satisfaccion);
+    if (isNaN(satisfaccionNum) || satisfaccionNum < 1 || satisfaccionNum > 5) {
+      return NextResponse.json(
+        { error: "Nivel de satisfacción inválido" },
+        { status: 400 }
+      );
+    }
+
+    // Validar tiempos opcionales
     const tiempoIdaNum = tiempoIda ? parseInt(tiempoIda) : null;
     const tiempoRegresoNum = tiempoRegreso ? parseInt(tiempoRegreso) : null;
 
@@ -91,7 +142,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Crear el registro en la base de datos
     const viaje = await prisma.viaje.create({
       data: {
         origenLat: origen.lat,
@@ -104,6 +154,10 @@ export async function POST(request: NextRequest) {
         motivoViaje,
         tiempoIda: tiempoIdaNum,
         tiempoRegreso: tiempoRegresoNum,
+        mediosTransporte,
+        transbordosIda: transbordosIdaNum,
+        transbordosRegreso: transbordosRegresoNum,
+        satisfaccion: satisfaccionNum,
       },
     });
 
