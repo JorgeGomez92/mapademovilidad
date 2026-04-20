@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -12,7 +12,8 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { reverseGeocode, Direccion } from "@/lib/geocoding";
+import { reverseGeocode, Direccion, SearchResult } from "@/lib/geocoding";
+import AddressSearch from "./AddressSearch";
 
 const PUEBLA_CENTER: [number, number] = [19.0414, -98.2063];
 const PUEBLA_ZOOM = 13;
@@ -170,18 +171,174 @@ export default function MapaMovilidad() {
     [paso, origen, destino, obtenerDireccion]
   );
 
-  const siguientePaso = () => {
-    if (paso === 1 && origen) setPaso(2);
-    else if (paso === 2 && destino) setPaso(3);
-    else if (paso === 3 && formData.mediosTransporte.length > 0) setPaso(4);
-    else if (paso === 4 && formData.transbordosIda !== "" && formData.transbordosRegreso !== "") setPaso(5);
-    else if (paso === 5 && formData.gastoDiario) setPaso(6);
-    else if (paso === 6 && formData.motivoViaje) setPaso(7);
-    else if (paso === 7 && formData.tiempoIda && formData.tiempoRegreso) setPaso(8);
+  const isStepAnswered = useCallback(
+    (s: number): boolean => {
+      switch (s) {
+        case 1:
+          return origen !== null;
+        case 2:
+          return destino !== null;
+        case 3:
+          return formData.mediosTransporte.length > 0;
+        case 4:
+          return (
+            formData.transbordosIda !== "" &&
+            formData.transbordosRegreso !== ""
+          );
+        case 5:
+          return formData.gastoDiario !== "";
+        case 6:
+          return formData.motivoViaje !== "";
+        case 7:
+          return formData.tiempoIda !== "" && formData.tiempoRegreso !== "";
+        case 8:
+          return formData.satisfaccion !== "";
+        default:
+          return false;
+      }
+    },
+    [origen, destino, formData]
+  );
+
+  // Slider animado entre pasos: drag sigue al dedo; al cruzar umbral,
+  // el paso actual sale por un lado y el nuevo entra por el opuesto.
+  const SWIPE_THRESHOLD = 60;
+  const ANIM_MS = 220;
+
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const swipeActive = useRef(false);
+  const [dragX, setDragX] = useState(0);
+  const [snapping, setSnapping] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const getWrapWidth = () =>
+    wrapRef.current?.offsetWidth ?? window.innerWidth ?? 400;
+
+  const cambiarPaso = useCallback(
+    (destinoPaso: number, dir: "next" | "prev") => {
+      if (busy) return;
+      if (destinoPaso < 1 || destinoPaso > TOTAL_PASOS) return;
+      if (destinoPaso === paso) return;
+
+      const W = getWrapWidth();
+      const outX = dir === "next" ? -W : W;
+
+      setBusy(true);
+      setSnapping(true);
+      setDragX(outX);
+
+      window.setTimeout(() => {
+        setSnapping(false);
+        setPaso(destinoPaso as Paso);
+        setDragX(-outX);
+
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setSnapping(true);
+            setDragX(0);
+          });
+        });
+
+        window.setTimeout(() => setBusy(false), ANIM_MS + 40);
+      }, ANIM_MS);
+    },
+    [paso, busy]
+  );
+
+  const irAPaso = useCallback(
+    (nuevo: number) => {
+      if (enviando || enviado) return;
+      if (nuevo === paso) return;
+      cambiarPaso(nuevo, nuevo > paso ? "next" : "prev");
+    },
+    [paso, enviando, enviado, cambiarPaso]
+  );
+
+  const pasoSiguiente = useCallback(() => {
+    if (paso < TOTAL_PASOS) cambiarPaso(paso + 1, "next");
+  }, [paso, cambiarPaso]);
+
+  const pasoAnterior = useCallback(() => {
+    if (paso > 1) cambiarPaso(paso - 1, "prev");
+  }, [paso, cambiarPaso]);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (paso === 9 || enviando || busy) return;
+    const t = e.touches[0];
+    touchStart.current = { x: t.clientX, y: t.clientY };
+    swipeActive.current = false;
+    setSnapping(false);
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (!touchStart.current || busy) return;
+    const t = e.touches[0];
+    const dx = t.clientX - touchStart.current.x;
+    const dy = t.clientY - touchStart.current.y;
+
+    if (!swipeActive.current) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+        touchStart.current = null;
+        return;
+      }
+      if (Math.abs(dx) > 10) swipeActive.current = true;
+      else return;
+    }
+
+    // Resistencia al arrastrar más allá del primer/último paso
+    let adj = dx;
+    if ((paso === 1 && dx > 0) || (paso === TOTAL_PASOS && dx < 0)) {
+      adj = dx * 0.3;
+    }
+    setDragX(adj);
+  };
+
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const start = touchStart.current;
+    const wasSwipe = swipeActive.current;
+    touchStart.current = null;
+    swipeActive.current = false;
+
+    if (!wasSwipe || !start) {
+      if (dragX !== 0) {
+        setSnapping(true);
+        setDragX(0);
+      }
+      return;
+    }
+
+    const dx = e.changedTouches[0].clientX - start.x;
+
+    if (dx < -SWIPE_THRESHOLD && paso < TOTAL_PASOS) {
+      cambiarPaso(paso + 1, "next");
+      return;
+    }
+    if (dx > SWIPE_THRESHOLD && paso > 1) {
+      cambiarPaso(paso - 1, "prev");
+      return;
+    }
+
+    setSnapping(true);
+    setDragX(0);
   };
 
   const removerOrigen = () => setOrigen(null);
   const removerDestino = () => setDestino(null);
+
+  const seleccionarBusqueda = (
+    r: SearchResult,
+    tipo: "origen" | "destino"
+  ) => {
+    const punto: Punto = {
+      lat: r.lat,
+      lng: r.lng,
+      direccion: r.direccion,
+      cargandoDireccion: false,
+    };
+    if (tipo === "origen") setOrigen(punto);
+    else setDestino(punto);
+  };
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -200,16 +357,15 @@ export default function MapaMovilidad() {
   };
 
   const handleSubmit = async () => {
-    if (
-      !origen ||
-      !destino ||
-      !formData.gastoDiario ||
-      !formData.motivoViaje ||
-      !formData.satisfaccion ||
-      formData.mediosTransporte.length === 0
-    ) {
-      return;
+    for (let s = 1; s <= TOTAL_PASOS; s++) {
+      if (!isStepAnswered(s)) {
+        alert(`Te falta completar la pregunta ${s}. Te llevo a ella.`);
+        setPaso(s as Paso);
+        return;
+      }
     }
+
+    if (!origen || !destino) return;
 
     setEnviando(true);
 
@@ -338,60 +494,79 @@ export default function MapaMovilidad() {
         </div>
 
         <aside className="sidebar">
-          {/* Indicador de pasos */}
-          <div className="step-indicator">
-            {Array.from({ length: TOTAL_PASOS }, (_, i) => i + 1).map((s) => (
-              <div
-                key={s}
-                className={`step-dot ${paso === s ? "active" : ""} ${
-                  paso > s ? "completed" : ""
-                }`}
-              />
-            ))}
+          {/* Indicador de pasos — clickable, estado según respuesta */}
+          <div className="step-indicator" role="tablist" aria-label="Pasos de la encuesta">
+            {Array.from({ length: TOTAL_PASOS }, (_, i) => i + 1).map((s) => {
+              const answered = isStepAnswered(s);
+              const isActive = paso === s;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  aria-label={`Paso ${s}${answered ? " — contestado" : " — pendiente"}`}
+                  className={`step-dot ${isActive ? "active" : ""} ${
+                    answered ? "completed" : ""
+                  }`}
+                  onClick={() => irAPaso(s)}
+                  disabled={paso === 9 || enviando}
+                />
+              );
+            })}
           </div>
 
-          <div className="step-content">
+          <div
+            className="step-content"
+            ref={wrapRef}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+            style={{
+              transform: `translateX(${dragX}px)`,
+              transition: snapping ? `transform ${ANIM_MS}ms ease` : "none",
+            }}
+          >
             {/* PASO 1: Seleccionar origen */}
             {paso === 1 && (
               <>
                 <h2 className="step-title">Paso 1: Punto de partida</h2>
                 <p className="step-description">
-                  Toca en el mapa donde inicias tu viaje diario.
+                  Toca en el mapa o busca la dirección donde inicias tu viaje.
                 </p>
 
                 {!origen ? (
                   <div className="instruction-box">
-                    <p>Toca en el mapa para marcar tu punto de partida</p>
+                    <p>Toca en el mapa o escribe una dirección abajo</p>
                   </div>
                 ) : (
-                  <>
-                    <div className="point-info">
-                      <div className="point-marker origin">A</div>
-                      <div className="point-details">
-                        <span className="point-label">Origen</span>
-                        <span className="point-coords">
-                          {origen.cargandoDireccion
-                            ? "Obteniendo dirección..."
-                            : origen.direccion?.displayName ||
-                              "Ubicación marcada"}
-                        </span>
-                      </div>
-                      <button
-                        className="btn-remove"
-                        onClick={removerOrigen}
-                        title="Quitar punto"
-                      >
-                        ×
-                      </button>
+                  <div className="point-info">
+                    <div className="point-marker origin">A</div>
+                    <div className="point-details">
+                      <span className="point-label">Origen</span>
+                      <span className="point-coords">
+                        {origen.cargandoDireccion
+                          ? "Obteniendo dirección..."
+                          : origen.direccion?.displayName ||
+                            "Ubicación marcada"}
+                      </span>
                     </div>
                     <button
-                      className="btn btn-primary"
-                      onClick={siguientePaso}
+                      className="btn-remove"
+                      onClick={removerOrigen}
+                      title="Quitar punto"
                     >
-                      Continuar
+                      ×
                     </button>
-                  </>
+                  </div>
                 )}
+
+                <AddressSearch
+                  placeholder={
+                    origen ? "Corregir dirección..." : "Buscar dirección..."
+                  }
+                  onSelect={(r) => seleccionarBusqueda(r, "origen")}
+                />
               </>
             )}
 
@@ -403,15 +578,17 @@ export default function MapaMovilidad() {
                   Toca en el mapa donde termina tu viaje.
                 </p>
 
-                <div className="point-info">
-                  <div className="point-marker origin">A</div>
-                  <div className="point-details">
-                    <span className="point-label">Origen</span>
-                    <span className="point-coords">
-                      {origen?.direccion?.displayName || "Ubicación marcada"}
-                    </span>
+                {origen && (
+                  <div className="point-info">
+                    <div className="point-marker origin">A</div>
+                    <div className="point-details">
+                      <span className="point-label">Origen</span>
+                      <span className="point-coords">
+                        {origen.direccion?.displayName || "Ubicación marcada"}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {destino ? (
                   <div className="point-info">
@@ -435,15 +612,16 @@ export default function MapaMovilidad() {
                   </div>
                 ) : (
                   <div className="instruction-box">
-                    <p>Toca en el mapa para marcar tu destino</p>
+                    <p>Toca en el mapa o escribe una dirección abajo</p>
                   </div>
                 )}
 
-                {destino && (
-                  <button className="btn btn-primary" onClick={siguientePaso}>
-                    Continuar
-                  </button>
-                )}
+                <AddressSearch
+                  placeholder={
+                    destino ? "Corregir dirección..." : "Buscar dirección..."
+                  }
+                  onSelect={(r) => seleccionarBusqueda(r, "destino")}
+                />
               </>
             )}
 
@@ -476,14 +654,6 @@ export default function MapaMovilidad() {
                     </label>
                   ))}
                 </div>
-
-                <button
-                  className="btn btn-primary"
-                  onClick={siguientePaso}
-                  disabled={formData.mediosTransporte.length === 0}
-                >
-                  Continuar
-                </button>
               </>
             )}
 
@@ -542,17 +712,6 @@ export default function MapaMovilidad() {
                     ))}
                   </div>
                 </div>
-
-                <button
-                  className="btn btn-primary"
-                  onClick={siguientePaso}
-                  disabled={
-                    formData.transbordosIda === "" ||
-                    formData.transbordosRegreso === ""
-                  }
-                >
-                  Continuar
-                </button>
               </>
             )}
 
@@ -581,14 +740,6 @@ export default function MapaMovilidad() {
                     />
                   </div>
                 </div>
-
-                <button
-                  className="btn btn-primary"
-                  onClick={siguientePaso}
-                  disabled={!formData.gastoDiario}
-                >
-                  Continuar
-                </button>
               </>
             )}
 
@@ -619,14 +770,6 @@ export default function MapaMovilidad() {
                     <option value="otro">Otro</option>
                   </select>
                 </div>
-
-                <button
-                  className="btn btn-primary"
-                  onClick={siguientePaso}
-                  disabled={!formData.motivoViaje}
-                >
-                  Continuar
-                </button>
               </>
             )}
 
@@ -669,14 +812,6 @@ export default function MapaMovilidad() {
                     inputMode="numeric"
                   />
                 </div>
-
-                <button
-                  className="btn btn-primary"
-                  onClick={siguientePaso}
-                  disabled={!formData.tiempoIda || !formData.tiempoRegreso}
-                >
-                  Continuar
-                </button>
               </>
             )}
 
@@ -713,14 +848,6 @@ export default function MapaMovilidad() {
                     </label>
                   ))}
                 </div>
-
-                <button
-                  className="btn btn-primary"
-                  onClick={handleSubmit}
-                  disabled={enviando || !formData.satisfaccion}
-                >
-                  {enviando ? "Enviando..." : "Enviar encuesta"}
-                </button>
               </>
             )}
 
@@ -736,6 +863,39 @@ export default function MapaMovilidad() {
                 <button className="btn btn-primary" onClick={reiniciar}>
                   Registrar otro viaje
                 </button>
+              </div>
+            )}
+
+            {/* Footer de navegación: libre entre pasos 1-8 */}
+            {paso !== 9 && (
+              <div className="step-nav">
+                <button
+                  type="button"
+                  className="btn btn-outline btn-back"
+                  onClick={pasoAnterior}
+                  disabled={paso === 1 || enviando}
+                  aria-label="Pregunta anterior"
+                >
+                  ← Atrás
+                </button>
+                {paso < TOTAL_PASOS ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={pasoSiguiente}
+                  >
+                    Siguiente →
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleSubmit}
+                    disabled={enviando}
+                  >
+                    {enviando ? "Enviando..." : "Enviar encuesta"}
+                  </button>
+                )}
               </div>
             )}
           </div>

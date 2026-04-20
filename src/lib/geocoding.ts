@@ -26,6 +26,69 @@ interface NominatimResponse {
   };
 }
 
+interface NominatimSearchItem extends NominatimResponse {
+  lat: string;
+  lon: string;
+  place_id?: number;
+}
+
+export interface SearchResult {
+  lat: number;
+  lng: number;
+  direccion: Direccion;
+}
+
+const PUEBLA_BBOX = "-98.5,19.5,-97.5,18.5";
+
+const isWithinPuebla = (lat: number, lng: number): boolean =>
+  lat >= 18.5 && lat <= 19.5 && lng >= -98.5 && lng <= -97.5;
+
+export async function searchAddresses(query: string): Promise<SearchResult[]> {
+  const q = query.trim();
+  if (q.length < 3) return [];
+
+  try {
+    const url =
+      "https://nominatim.openstreetmap.org/search?" +
+      `format=json&addressdetails=1&accept-language=es&limit=6&countrycodes=mx` +
+      `&viewbox=${PUEBLA_BBOX}&bounded=1&q=${encodeURIComponent(q)}`;
+
+    const response = await fetch(url, {
+      headers: { "User-Agent": "MapaMovilidadPuebla/1.0" },
+    });
+
+    if (!response.ok) return [];
+
+    const data: NominatimSearchItem[] = await response.json();
+
+    return data
+      .map((item) => {
+        const lat = parseFloat(item.lat);
+        const lng = parseFloat(item.lon);
+        const displayName = formatDisplayName(item);
+        return {
+          lat,
+          lng,
+          direccion: {
+            calle: item.address?.road,
+            numero: item.address?.house_number,
+            colonia: item.address?.neighbourhood || item.address?.suburb,
+            codigoPostal: item.address?.postcode,
+            ciudad:
+              item.address?.city ||
+              item.address?.town ||
+              item.address?.village ||
+              "Puebla",
+            displayName,
+          },
+        };
+      })
+      .filter((r) => isWithinPuebla(r.lat, r.lng));
+  } catch {
+    return [];
+  }
+}
+
 export async function reverseGeocode(
   lat: number,
   lng: number
