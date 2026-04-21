@@ -48,8 +48,9 @@ const MEDIOS_TRANSPORTE = [
   { value: "van", label: "Van / Combi" },
   { value: "camion", label: "Camión" },
   { value: "microbus", label: "Microbús" },
-  { value: "colectivo", label: "Colectivo" },
-  { value: "otro", label: "Otro" },
+  { value: "automovil", label: "Automóvil" },
+  { value: "bicicleta", label: "Bicicleta" },
+  { value: "apie", label: "A pie" },
 ];
 
 const SATISFACCION_OPCIONES = [
@@ -160,15 +161,15 @@ export default function MapaMovilidad() {
   const handleMapClick = useCallback(
     (lat: number, lng: number) => {
       const nuevoPunto: Punto = { lat, lng, cargandoDireccion: true };
-      if (paso === 1 && !origen) {
+      if (paso === 1) {
         setOrigen(nuevoPunto);
         obtenerDireccion(nuevoPunto, "origen");
-      } else if (paso === 2 && !destino) {
+      } else if (paso === 2) {
         setDestino(nuevoPunto);
         obtenerDireccion(nuevoPunto, "destino");
       }
     },
-    [paso, origen, destino, obtenerDireccion]
+    [paso, obtenerDireccion]
   );
 
   const isStepAnswered = useCallback(
@@ -419,8 +420,7 @@ export default function MapaMovilidad() {
     setPaso(1);
   };
 
-  const mapClickEnabled =
-    (paso === 1 && !origen) || (paso === 2 && !destino);
+  const mapClickEnabled = paso === 1 || paso === 2;
 
   const getToastMessage = () => {
     if (paso === 1 && !origen) return "Toca para marcar inicio";
@@ -532,12 +532,15 @@ export default function MapaMovilidad() {
               <>
                 <h2 className="step-title">Paso 1: Punto de partida</h2>
                 <p className="step-description">
-                  Toca en el mapa o busca la dirección donde inicias tu viaje.
+                  Toca en el mapa o busca la dirección aproximada donde inicias
+                  tus viajes más frecuentes.
                 </p>
 
                 {!origen ? (
                   <div className="instruction-box">
-                    <p>Toca en el mapa o escribe una dirección abajo</p>
+                    <p>
+                      Toca en el mapa o escribe una dirección aproximada abajo
+                    </p>
                   </div>
                 ) : (
                   <div className="point-info">
@@ -563,7 +566,9 @@ export default function MapaMovilidad() {
 
                 <AddressSearch
                   placeholder={
-                    origen ? "Corregir dirección..." : "Buscar dirección..."
+                    origen
+                      ? "Corregir dirección..."
+                      : "Buscar dirección aproximada..."
                   }
                   onSelect={(r) => seleccionarBusqueda(r, "origen")}
                 />
@@ -575,7 +580,8 @@ export default function MapaMovilidad() {
               <>
                 <h2 className="step-title">Paso 2: Tu destino</h2>
                 <p className="step-description">
-                  Toca en el mapa donde termina tu viaje.
+                  Toca en el mapa o busca la dirección aproximada donde
+                  terminan tus viajes más frecuentes.
                 </p>
 
                 {origen && (
@@ -612,13 +618,17 @@ export default function MapaMovilidad() {
                   </div>
                 ) : (
                   <div className="instruction-box">
-                    <p>Toca en el mapa o escribe una dirección abajo</p>
+                    <p>
+                      Toca en el mapa o escribe una dirección aproximada abajo
+                    </p>
                   </div>
                 )}
 
                 <AddressSearch
                   placeholder={
-                    destino ? "Corregir dirección..." : "Buscar dirección..."
+                    destino
+                      ? "Corregir dirección..."
+                      : "Buscar dirección aproximada..."
                   }
                   onSelect={(r) => seleccionarBusqueda(r, "destino")}
                 />
@@ -855,10 +865,15 @@ export default function MapaMovilidad() {
             {paso === 9 && enviado && (
               <div className="success-message">
                 <div className="success-icon">✓</div>
-                <h2>¡Gracias por participar!</h2>
+                <h2>¡Gracias por participar en la encuesta!</h2>
                 <p>
-                  Tu información ayudará a diseñar mejores estrategias de
-                  transporte público para el Periférico Ecológico.
+                  Con estos datos podemos hacer estudios de movilidad para
+                  mejorar el transporte público de esta ciudad.
+                </p>
+                <p>
+                  Comparte el link: entre más personas participen, mejor
+                  podremos mostrar nuestras verdaderas necesidades de
+                  movilidad.
                 </p>
                 <button className="btn btn-primary" onClick={reiniciar}>
                   Registrar otro viaje

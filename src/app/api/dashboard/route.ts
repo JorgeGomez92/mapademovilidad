@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isAuthenticated } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/auth-server";
 
 const MEDIOS_NOMBRES: Record<string, string> = {
   linea1: "Línea 1 RUTA",
@@ -11,6 +11,10 @@ const MEDIOS_NOMBRES: Record<string, string> = {
   van: "Van / Combi",
   camion: "Camión",
   microbus: "Microbús",
+  automovil: "Automóvil",
+  bicicleta: "Bicicleta",
+  apie: "A pie",
+  // Valores históricos (siguen en la DB aunque el form actual ya no los produce).
   colectivo: "Colectivo",
   otro: "Otro",
 };

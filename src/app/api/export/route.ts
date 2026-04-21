@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isAuthenticated } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/auth-server";
 
 const MOTIVOS_NOMBRES: Record<string, string> = {
   trabajo: "Trabajo",
@@ -22,6 +22,10 @@ const MEDIOS_NOMBRES: Record<string, string> = {
   van: "Van / Combi",
   camion: "Camión",
   microbus: "Microbús",
+  automovil: "Automóvil",
+  bicicleta: "Bicicleta",
+  apie: "A pie",
+  // Valores históricos.
   colectivo: "Colectivo",
   otro: "Otro",
 };

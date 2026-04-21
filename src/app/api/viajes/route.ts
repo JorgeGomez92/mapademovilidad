@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { isAuthenticated } from "@/lib/auth-server";
+import { rateLimit, getClientIp } from "@/lib/rate-limit";
+
+// Límite anti-spam para envíos de encuesta: 10 por IP cada 10 minutos.
+const SUBMIT_LIMIT = 10;
+const SUBMIT_WINDOW_MS = 10 * 60 * 1000;
 
 const isValidCoord = (lat: number, lng: number): boolean => {
   return (
@@ -20,10 +26,21 @@ const MOTIVOS_VALIDOS = [
 const MEDIOS_VALIDOS = [
   "linea1", "linea2", "linea3", "linea4",
   "alimentadora", "van", "camion", "microbus",
+  "automovil", "bicicleta", "apie",
+  // Conservar valores históricos (no los envía el form actual, pero existen en DB).
   "colectivo", "otro",
 ];
 
 export async function POST(request: NextRequest) {
+  const ip = getClientIp(request);
+  const rl = rateLimit(`viajes:${ip}`, SUBMIT_LIMIT, SUBMIT_WINDOW_MS);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Has enviado demasiadas encuestas. Intenta más tarde." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } }
+    );
+  }
+
   try {
     const body = await request.json();
 
@@ -176,6 +193,10 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
+  if (!(await isAuthenticated())) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  }
+
   try {
     const viajes = await prisma.viaje.findMany({
       orderBy: { createdAt: "desc" },
