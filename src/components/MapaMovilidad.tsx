@@ -867,13 +867,10 @@ export default function MapaMovilidad() {
                 <div className="success-icon">✓</div>
                 <h2>¡Gracias por participar en la encuesta!</h2>
                 <p>
-                  Con estos datos podemos hacer estudios de movilidad para
-                  mejorar el transporte público de esta ciudad.
+                  Con estos datos podemos hacer estudios de movilidad para mejorar el transporte público de esta ciudad.
                 </p>
                 <p>
-                  Comparte el link: entre más personas participen, mejor
-                  podremos mostrar nuestras verdaderas necesidades de
-                  movilidad.
+                  Comparte el link: Entre más personas participen obtendremos mejores resultados.
                 </p>
                 <button className="btn btn-primary" onClick={reiniciar}>
                   Registrar otro viaje
