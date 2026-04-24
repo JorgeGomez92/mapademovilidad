@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAuthenticated } from "@/lib/auth-server";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
+import { MEDIOS_VALIDOS } from "@/lib/taxonomies";
 
 // Límite anti-spam para envíos de encuesta: 10 por IP cada 10 minutos.
 const SUBMIT_LIMIT = 10;
@@ -21,14 +22,6 @@ const isValidCoord = (lat: number, lng: number): boolean => {
 const MOTIVOS_VALIDOS = [
   "trabajo", "escuela", "casa", "compras",
   "salud", "tramites", "recreacion", "otro",
-];
-
-const MEDIOS_VALIDOS = [
-  "linea1", "linea2", "linea3", "linea4",
-  "alimentadora", "van", "camion", "microbus",
-  "automovil", "bicicleta", "apie",
-  // Conservar valores históricos (no los envía el form actual, pero existen en DB).
-  "colectivo", "otro",
 ];
 
 export async function POST(request: NextRequest) {

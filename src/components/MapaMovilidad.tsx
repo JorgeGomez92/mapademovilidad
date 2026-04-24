@@ -13,6 +13,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { reverseGeocode, Direccion, SearchResult } from "@/lib/geocoding";
+import { MEDIOS_TRANSPORTE } from "@/lib/taxonomies";
 import AddressSearch from "./AddressSearch";
 
 const PUEBLA_CENTER: [number, number] = [19.0414, -98.2063];
@@ -38,20 +39,6 @@ interface FormData {
 
 const TOTAL_PASOS = 8;
 type Paso = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
-
-const MEDIOS_TRANSPORTE = [
-  { value: "linea1", label: "Línea 1 RUTA" },
-  { value: "linea2", label: "Línea 2 RUTA" },
-  { value: "linea3", label: "Línea 3 RUTA" },
-  { value: "linea4", label: "Línea 4 RUTA" },
-  { value: "alimentadora", label: "Alimentadora RUTA" },
-  { value: "van", label: "Van / Combi" },
-  { value: "camion", label: "Camión" },
-  { value: "microbus", label: "Microbús" },
-  { value: "automovil", label: "Automóvil" },
-  { value: "bicicleta", label: "Bicicleta" },
-  { value: "apie", label: "A pie" },
-];
 
 const SATISFACCION_OPCIONES = [
   { value: 1, label: "Nada satisfecho" },

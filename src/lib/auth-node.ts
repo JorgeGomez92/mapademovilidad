@@ -1,17 +1,13 @@
 // Password hashing con scrypt (Node crypto). Importar solo desde API routes (runtime Node).
-import { scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
+import { scryptSync, timingSafeEqual } from "node:crypto";
 import { getUsers } from "./auth";
 
 const SCRYPT_KEYLEN = 64;
 const SCRYPT_SALT_BYTES = 16;
 
-// Separador `.` (no `$`) para que no se interprete como interpolación de variable
-// en archivos .env (dotenv/dotenv-expand).
-export function hashPassword(password: string): string {
-  const salt = randomBytes(SCRYPT_SALT_BYTES);
-  const derived = scryptSync(password, salt, SCRYPT_KEYLEN);
-  return `scrypt.${salt.toString("hex")}.${derived.toString("hex")}`;
-}
+// El formato del hash usa `.` como separador (no `$`) para que no se interprete
+// como interpolación de variable en archivos .env. Para generar nuevos hashes
+// ver scripts/hash-password.mjs.
 
 function parseHash(stored: string): { salt: Buffer; hash: Buffer } | null {
   const parts = stored.split(".");

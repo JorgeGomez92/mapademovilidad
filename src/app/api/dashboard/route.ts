@@ -1,23 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAuthenticated } from "@/lib/auth-server";
-
-const MEDIOS_NOMBRES: Record<string, string> = {
-  linea1: "Línea 1 RUTA",
-  linea2: "Línea 2 RUTA",
-  linea3: "Línea 3 RUTA",
-  linea4: "Línea 4 RUTA",
-  alimentadora: "Alimentadora",
-  van: "Van / Combi",
-  camion: "Camión",
-  microbus: "Microbús",
-  automovil: "Automóvil",
-  bicicleta: "Bicicleta",
-  apie: "A pie",
-  // Valores históricos (siguen en la DB aunque el form actual ya no los produce).
-  colectivo: "Colectivo",
-  otro: "Otro",
-};
+import { MEDIOS_NOMBRES } from "@/lib/taxonomies";
 
 export async function GET(request: NextRequest) {
   const authenticated = await isAuthenticated();
