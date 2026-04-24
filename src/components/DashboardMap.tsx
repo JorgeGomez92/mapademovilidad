@@ -40,6 +40,8 @@ export default function DashboardMap({ viajes, heatmapType }: DashboardMapProps)
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const heatLayerRef = useRef<L.Layer | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const connectionLayerRef = useRef<L.LayerGroup | null>(null);
+  const activeViajeIdRef = useRef<string | null>(null);
 
   // Inicializar mapa
   useEffect(() => {
@@ -56,6 +58,15 @@ export default function DashboardMap({ viajes, heatmapType }: DashboardMapProps)
     }).addTo(mapRef.current);
 
     markersLayerRef.current = L.layerGroup().addTo(mapRef.current);
+    connectionLayerRef.current = L.layerGroup().addTo(mapRef.current);
+
+    // Click en el mapa (fuera de cualquier marker) oculta la trayectoria activa.
+    mapRef.current.on("click", () => {
+      if (connectionLayerRef.current && activeViajeIdRef.current !== null) {
+        connectionLayerRef.current.clearLayers();
+        activeViajeIdRef.current = null;
+      }
+    });
 
     return () => {
       if (mapRef.current) {
@@ -79,7 +90,60 @@ export default function DashboardMap({ viajes, heatmapType }: DashboardMapProps)
       markersLayerRef.current.clearLayers();
     }
 
+    // Limpiar conexión activa al cambiar filtros/datos
+    if (connectionLayerRef.current) {
+      connectionLayerRef.current.clearLayers();
+    }
+    activeViajeIdRef.current = null;
+
     if (viajes.length === 0) return;
+
+    // Toggle: click en un marker muestra la línea origen↔destino de su viaje;
+    // click de nuevo en el mismo viaje la oculta; click en otro la reemplaza.
+    const toggleConexion = (viaje: Viaje) => {
+      if (!connectionLayerRef.current) return;
+      connectionLayerRef.current.clearLayers();
+
+      if (activeViajeIdRef.current === viaje.id) {
+        activeViajeIdRef.current = null;
+        return;
+      }
+      activeViajeIdRef.current = viaje.id;
+
+      L.circleMarker([viaje.origenLat, viaje.origenLng], {
+        radius: 10,
+        fillColor: "#4CAF50",
+        color: "#1b5e20",
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.25,
+        interactive: false,
+      }).addTo(connectionLayerRef.current);
+
+      L.circleMarker([viaje.destinoLat, viaje.destinoLng], {
+        radius: 10,
+        fillColor: "#f44336",
+        color: "#b71c1c",
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.25,
+        interactive: false,
+      }).addTo(connectionLayerRef.current);
+
+      L.polyline(
+        [
+          [viaje.origenLat, viaje.origenLng],
+          [viaje.destinoLat, viaje.destinoLng],
+        ],
+        {
+          color: "#2d8f4e",
+          weight: 3,
+          opacity: 0.85,
+          dashArray: "6, 6",
+          interactive: false,
+        }
+      ).addTo(connectionLayerRef.current);
+    };
 
     const heatPoints: Array<[number, number, number]> = [];
 
@@ -110,7 +174,7 @@ export default function DashboardMap({ viajes, heatmapType }: DashboardMapProps)
     }).addTo(mapRef.current);
 
     // Agregar marcadores individuales para referencia
-    if (markersLayerRef.current && viajes.length <= 100) {
+    if (markersLayerRef.current) {
       viajes.forEach((viaje) => {
         if (heatmapType === "origins" || heatmapType === "both") {
           L.circleMarker([viaje.origenLat, viaje.origenLng], {
@@ -122,9 +186,13 @@ export default function DashboardMap({ viajes, heatmapType }: DashboardMapProps)
             fillOpacity: 0.6,
           })
             .bindTooltip(
-              `Origen<br>Gasto: $${viaje.gastoDiario}`,
+              `Origen<br>Gasto: $${viaje.gastoDiario}<br><small>Click para ver trayectoria</small>`,
               { direction: "top" }
             )
+            .on("click", (e) => {
+              L.DomEvent.stopPropagation(e);
+              toggleConexion(viaje);
+            })
             .addTo(markersLayerRef.current!);
         }
         if (heatmapType === "destinations" || heatmapType === "both") {
@@ -137,9 +205,13 @@ export default function DashboardMap({ viajes, heatmapType }: DashboardMapProps)
             fillOpacity: 0.6,
           })
             .bindTooltip(
-              `Destino<br>Gasto: $${viaje.gastoDiario}`,
+              `Destino<br>Gasto: $${viaje.gastoDiario}<br><small>Click para ver trayectoria</small>`,
               { direction: "top" }
             )
+            .on("click", (e) => {
+              L.DomEvent.stopPropagation(e);
+              toggleConexion(viaje);
+            })
             .addTo(markersLayerRef.current!);
         }
       });
