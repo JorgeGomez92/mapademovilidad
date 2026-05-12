@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -36,6 +36,16 @@ interface FormData {
   transbordosRegreso: string;
   satisfaccion: string;
 }
+
+interface StatsFinales {
+  gastoPromedio: number;
+  tiempoPromedioIda: number;
+  porcentajeTransbordo: number;
+}
+
+const SHARE_TEXT =
+  "Participa en la encuesta de movilidad de Puebla. Cada respuesta ayuda a mejorar el transporte público.";
+const SHARE_TITLE = "Encuesta de Movilidad — Puebla";
 
 const TOTAL_PASOS = 8;
 type Paso = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
@@ -117,6 +127,9 @@ export default function MapaMovilidad() {
   const [destino, setDestino] = useState<Punto | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
+  const [statsFinales, setStatsFinales] = useState<StatsFinales | null>(null);
+  const [shareToast, setShareToast] = useState<string | null>(null);
+  const [canNativeShare, setCanNativeShare] = useState(false);
 
   const [formData, setFormData] = useState<FormData>({
     gastoDiario: "",
@@ -378,6 +391,12 @@ export default function MapaMovilidad() {
       });
 
       if (response.ok) {
+        try {
+          const data = await response.json();
+          if (data?.stats) setStatsFinales(data.stats as StatsFinales);
+        } catch {
+          // Si por alguna razón no llegan los stats, el front muestra fallback.
+        }
         setEnviado(true);
         setPaso(9);
       } else {
@@ -404,8 +423,103 @@ export default function MapaMovilidad() {
       satisfaccion: "",
     });
     setEnviado(false);
+    setStatsFinales(null);
     setPaso(1);
   };
+
+  // Detección de Web Share API (solo cliente, evita SSR mismatch).
+  useEffect(() => {
+    setCanNativeShare(
+      typeof navigator !== "undefined" && typeof navigator.share === "function"
+    );
+  }, []);
+
+  // Dato curioso al azar — congelado mientras dure la pantalla final.
+  const datoCurioso = useMemo(() => {
+    if (paso !== 9 || !statsFinales) return null;
+    const opciones: string[] = [];
+    if (statsFinales.gastoPromedio > 0) {
+      opciones.push(
+        `Según los datos recabados en la encuesta, el gasto promedio en transporte es de $${Math.round(
+          statsFinales.gastoPromedio
+        )} al día.`
+      );
+    }
+    if (statsFinales.tiempoPromedioIda > 0) {
+      opciones.push(
+        `Según los datos recabados en la encuesta, el tiempo promedio de ida es de ${Math.round(
+          statsFinales.tiempoPromedioIda
+        )} minutos.`
+      );
+    }
+    opciones.push(
+      `Según los datos recabados en la encuesta, alrededor del ${statsFinales.porcentajeTransbordo.toFixed(
+        1
+      )}% de las personas que usan transporte público necesita transbordar.`
+    );
+    return opciones[Math.floor(Math.random() * opciones.length)];
+    // Re-elige solo si cambia el envío (statsFinales pasa de null → objeto).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statsFinales, paso === 9]);
+
+  const compartirUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return window.location.origin || window.location.href;
+  }, []);
+
+  const compartirNativo = useCallback(async () => {
+    if (typeof navigator === "undefined" || !navigator.share) return;
+    try {
+      await navigator.share({
+        title: SHARE_TITLE,
+        text: SHARE_TEXT,
+        url: compartirUrl,
+      });
+    } catch {
+      // El usuario canceló o el navegador bloqueó — no hace falta avisar.
+    }
+  }, [compartirUrl]);
+
+  const abrirEnlace = useCallback((url: string) => {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, []);
+
+  const compartirWhatsapp = useCallback(() => {
+    abrirEnlace(
+      `https://wa.me/?text=${encodeURIComponent(`${SHARE_TEXT} ${compartirUrl}`)}`
+    );
+  }, [abrirEnlace, compartirUrl]);
+
+  const compartirMessenger = useCallback(() => {
+    // Mobile: deep link a la app de Messenger (si está instalada).
+    // Desktop: fallback al diálogo de compartir de Facebook (Messenger Web
+    // requiere App ID para el dialog/send; el sharer es el sustituto viable).
+    const url = encodeURIComponent(compartirUrl);
+    const ua =
+      typeof navigator !== "undefined" ? navigator.userAgent : "";
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
+    if (isMobile) {
+      window.location.href = `fb-messenger://share/?link=${url}`;
+    } else {
+      abrirEnlace(`https://www.facebook.com/sharer/sharer.php?u=${url}`);
+    }
+  }, [abrirEnlace, compartirUrl]);
+
+  const compartirEmail = useCallback(() => {
+    window.location.href = `mailto:?subject=${encodeURIComponent(
+      SHARE_TITLE
+    )}&body=${encodeURIComponent(`${SHARE_TEXT}\n${compartirUrl}`)}`;
+  }, [compartirUrl]);
+
+  const copiarEnlace = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(compartirUrl);
+      setShareToast("¡Enlace copiado!");
+    } catch {
+      setShareToast("No se pudo copiar. Selecciona y copia manualmente.");
+    }
+    window.setTimeout(() => setShareToast(null), 2200);
+  }, [compartirUrl]);
 
   const mapClickEnabled = paso === 1 || paso === 2;
 
@@ -848,20 +962,75 @@ export default function MapaMovilidad() {
               </>
             )}
 
-            {/* PASO 9: Confirmación */}
+            {/* PASO 9: Confirmación + dato curioso + compartir */}
             {paso === 9 && enviado && (
               <div className="success-message">
-                <div className="success-icon">✓</div>
                 <h2>¡Gracias por participar en la encuesta!</h2>
                 <p>
                   Con estos datos podemos hacer estudios de movilidad para mejorar el transporte público de esta ciudad.
                 </p>
-                <p>
-                  Comparte el link: Entre más personas participen obtendremos mejores resultados.
-                </p>
-                <button className="btn btn-primary" onClick={reiniciar}>
-                  Registrar otro viaje
-                </button>
+
+                {datoCurioso && (
+                  <div className="fact-card" aria-live="polite">
+                    <span className="fact-label">¿Sabías que…?</span>
+                    <p className="fact-text">{datoCurioso}</p>
+                  </div>
+                )}
+
+                {!canNativeShare && (
+                  <div className="share-section">
+                    <p className="share-label">Comparte la encuesta</p>
+                    <div className="share-grid" role="group" aria-label="Canales de compartir">
+                      <button type="button" className="share-btn" onClick={compartirWhatsapp} aria-label="Compartir por WhatsApp">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path fill="#25D366" d="M20.5 3.5A11 11 0 0 0 3.6 17.1L2 22l5-1.6a11 11 0 0 0 13.5-16.9zM12 20a8 8 0 0 1-4-1.1l-.3-.2-3 1 1-2.9-.2-.3A8 8 0 1 1 12 20zm4.5-5.6c-.2-.1-1.4-.7-1.6-.8-.2-.1-.4-.1-.5.1l-.7.9c-.1.2-.3.2-.5.1a6.6 6.6 0 0 1-3.2-2.8c-.2-.4.3-.4.7-1.2.1-.2 0-.3 0-.5l-.7-1.7c-.2-.4-.4-.4-.5-.4h-.5c-.2 0-.5.1-.7.3-.2.3-.9.9-.9 2.1s.9 2.5 1 2.7c.1.2 1.8 2.8 4.4 3.9 1.7.6 2.3.7 3.1.6.5-.1 1.4-.6 1.6-1.1.2-.6.2-1 .2-1.1-.1-.1-.3-.2-.5-.3z" />
+                        </svg>
+                        <span>WhatsApp</span>
+                      </button>
+                      <button type="button" className="share-btn" onClick={compartirMessenger} aria-label="Compartir por Messenger">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path fill="#0084FF" d="M12 2C6.36 2 2 6.13 2 11.7c0 2.91 1.19 5.44 3.14 7.17.16.15.27.36.27.6l.06 1.97c.02.62.66 1.03 1.23.78l2.2-.97c.18-.08.39-.1.58-.05 1.04.29 2.15.44 3.31.44 5.64 0 10-4.13 10-9.7C22 6.13 17.64 2 12 2zm6 7.46-2.93 4.65c-.46.74-1.46.92-2.16.39l-2.34-1.75a.6.6 0 0 0-.72 0l-3.16 2.4c-.42.32-.97-.18-.69-.62l2.93-4.65c.47-.74 1.47-.92 2.17-.39l2.34 1.75c.21.16.51.16.72 0l3.16-2.4c.42-.32.97.18.68.62z" />
+                        </svg>
+                        <span>Messenger</span>
+                      </button>
+                      <button type="button" className="share-btn" onClick={compartirEmail} aria-label="Compartir por correo">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path fill="#5f6368" d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z" />
+                        </svg>
+                        <span>Correo</span>
+                      </button>
+                      <button type="button" className="share-btn" onClick={copiarEnlace} aria-label="Copiar enlace">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#2d8f4e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                        <span>Copiar</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="action-row">
+                  {canNativeShare && (
+                    <button
+                      type="button"
+                      className="share-btn-native"
+                      onClick={compartirNativo}
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <circle cx="18" cy="5" r="3" />
+                        <circle cx="6" cy="12" r="3" />
+                        <circle cx="18" cy="19" r="3" />
+                        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                      </svg>
+                      Compartir
+                    </button>
+                  )}
+                  <button className="btn btn-primary" onClick={reiniciar}>
+                    Registrar otro viaje
+                  </button>
+                </div>
               </div>
             )}
 
@@ -905,6 +1074,12 @@ export default function MapaMovilidad() {
         <div className="loading-overlay">
           <div className="spinner"></div>
           <p>Enviando datos...</p>
+        </div>
+      )}
+
+      {shareToast && (
+        <div className="share-toast" role="status" aria-live="polite">
+          {shareToast}
         </div>
       )}
     </div>

@@ -172,8 +172,30 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Stats agregados para el pop-up de cierre. Solo 3 promedios — no exponemos
+    // totalViajes para evitar filtrar nivel de adopción de la encuesta.
+    const [agg, conTransbordo, total] = await Promise.all([
+      prisma.viaje.aggregate({
+        _avg: { gastoDiario: true, tiempoIda: true },
+      }),
+      prisma.viaje.count({ where: { transbordosIda: { gt: 0 } } }),
+      prisma.viaje.count(),
+    ]);
+
+    const gastoPromedio = agg._avg.gastoDiario ?? 0;
+    const tiempoPromedioIda = agg._avg.tiempoIda ?? 0;
+    const porcentajeTransbordo = total > 0 ? (conTransbordo / total) * 100 : 0;
+
     return NextResponse.json(
-      { message: "Viaje registrado exitosamente", id: viaje.id },
+      {
+        message: "Viaje registrado exitosamente",
+        id: viaje.id,
+        stats: {
+          gastoPromedio: Math.round(gastoPromedio * 10) / 10,
+          tiempoPromedioIda: Math.round(tiempoPromedioIda),
+          porcentajeTransbordo: Math.round(porcentajeTransbordo * 10) / 10,
+        },
+      },
       { status: 201 }
     );
   } catch (error) {

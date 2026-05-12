@@ -12,6 +12,7 @@ export const MEDIOS_TRANSPORTE = [
   { value: "camion", label: "Camión" },
   { value: "microbus", label: "Microbús" },
   { value: "automovil", label: "Automóvil" },
+  { value: "motocicleta", label: "Motocicleta" },
   { value: "bicicleta", label: "Bicicleta" },
   { value: "apie", label: "A pie" },
 ] as const;

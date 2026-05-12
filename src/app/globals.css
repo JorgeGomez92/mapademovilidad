@@ -502,6 +502,166 @@ body {
   margin-bottom: 1.5rem;
 }
 
+/* Tarjeta con dato curioso de la base de datos (pantalla final) */
+.fact-card {
+  background: #e8f5e9;
+  border-left: 4px solid #2d8f4e;
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  margin: 0.25rem 0 1.25rem;
+  text-align: left;
+}
+
+.fact-label {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  color: #1a5f2a;
+  margin-bottom: 0.3rem;
+}
+
+.fact-text {
+  font-size: 0.98rem;
+  line-height: 1.4;
+  color: #1a1a1a;
+  margin: 0 !important; /* override de .success-message p margin-bottom */
+}
+
+/* Sección de compartir */
+.share-section {
+  margin: 0 0 1.25rem;
+}
+
+.share-label {
+  font-size: 0.78rem;
+  color: #666;
+  margin: 0 0 0.55rem !important;
+  text-align: left;
+  font-weight: 500;
+}
+
+.share-btn-native {
+  width: 100%;
+  background: #2d8f4e;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 0.8rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: background 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.share-btn-native:hover {
+  background: #1a5f2a;
+}
+
+.share-btn-native svg {
+  width: 18px;
+  height: 18px;
+}
+
+.share-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.35rem;
+}
+
+.share-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.45rem 0.25rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: white;
+  font-size: 0.65rem;
+  color: #555;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.share-btn:hover {
+  border-color: #2d8f4e;
+  background: #fafafa;
+}
+
+.share-btn:active {
+  transform: scale(0.96);
+}
+
+.share-btn svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.share-btn span {
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* Fila final con Compartir + Registrar otro viaje lado a lado.
+   Cuando no hay native share, solo lleva el botón de registrar otro viaje
+   (se expande a 100% por flex:1). */
+.action-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.action-row > .share-btn-native,
+.action-row > .btn-primary {
+  flex: 1;
+  margin: 0;
+}
+
+/* Toast flotante para "Enlace copiado" */
+.share-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a1a1a;
+  color: white;
+  padding: 0.65rem 1.1rem;
+  border-radius: 22px;
+  font-size: 0.85rem;
+  z-index: 2000;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  animation: fadeInDown 0.25s ease;
+}
+
+@media (max-width: 480px) {
+  .share-grid {
+    gap: 0.3rem;
+  }
+
+  .share-btn {
+    padding: 0.4rem 0.2rem;
+    font-size: 0.62rem;
+  }
+
+  .share-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .fact-text {
+    font-size: 0.92rem;
+  }
+}
+
 /* Tooltip personalizado */
 .leaflet-tooltip {
   background: white;
