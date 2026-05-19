@@ -4,21 +4,7 @@ import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet.heat";
-
-// Extender tipos de Leaflet para incluir heat
-declare module "leaflet" {
-  function heatLayer(
-    latlngs: Array<[number, number, number?]>,
-    options?: {
-      radius?: number;
-      blur?: number;
-      maxZoom?: number;
-      max?: number;
-      minOpacity?: number;
-      gradient?: Record<number, string>;
-    }
-  ): L.Layer;
-}
+// Tipos de heatLayer provistos por @types/leaflet.heat.
 
 interface Viaje {
   id: string;

@@ -12,12 +12,29 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import "leaflet.heat";
 import { reverseGeocode, Direccion, SearchResult } from "@/lib/geocoding";
 import { MEDIOS_TRANSPORTE } from "@/lib/taxonomies";
 import AddressSearch from "./AddressSearch";
 
 const PUEBLA_CENTER: [number, number] = [19.0414, -98.2063];
 const PUEBLA_ZOOM = 13;
+
+// Capas de mapa. Esri World Imagery es libre y sin API key, equivalente
+// visual al satelital de Google. Las teselas solo se descargan cuando la
+// vista se activa, por lo que no encarece el load inicial.
+const TILE_CALLE = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+const TILE_SATELITE =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+const ATTR_CALLE =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+const ATTR_SATELITE =
+  'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics';
+
+// Tiles para los thumbnails del toggle (z=13 centrado en Puebla).
+const THUMB_CALLE = "https://tile.openstreetmap.org/13/1861/3654.png";
+const THUMB_SATELITE =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/13/3654/1861";
 
 interface Punto {
   lat: number;
@@ -121,6 +138,78 @@ function FitBounds({ points }: { points: Punto[] }) {
   return null;
 }
 
+// Inyecta progresivamente los puntos de /api/heatmap en lotes para crear el
+// efecto "el calor crece". Se monta solo al llegar al paso 9; al desmontar
+// limpia el layer y cualquier timer pendiente para no fugar memoria.
+function HeatmapLayer() {
+  const map = useMap();
+
+  useEffect(() => {
+    let layer: L.HeatLayer | null = null;
+    const timers: number[] = [];
+    let cancelado = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/heatmap?type=destinations");
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          points: Array<[number, number, number]>;
+        };
+        const todos = data.points || [];
+        if (cancelado || todos.length === 0) return;
+
+        // Encuadra el área antes de animar, con animación de cámara suave.
+        const bounds = L.latLngBounds(todos.map((p) => [p[0], p[1]]));
+        map.flyToBounds(bounds, { padding: [40, 40], duration: 0.8 });
+
+        // Layer arranca vacío y vamos empujando puntos en lotes.
+        const acumulados: Array<[number, number, number]> = [];
+        const hl = L.heatLayer(acumulados, {
+          radius: 28,
+          blur: 22,
+          maxZoom: 17,
+          minOpacity: 0.35,
+          gradient: {
+            0.3: "#fff59d",
+            0.5: "#ffb74d",
+            0.7: "#f4511e",
+            0.9: "#c62828",
+            1: "#7f0000",
+          },
+        });
+        hl.addTo(map);
+        layer = hl;
+
+        const BATCH = 25;
+        const INTERVAL = 55;
+        let i = 0;
+        const inyectar = () => {
+          if (cancelado || !layer) return;
+          const batch = todos.slice(i, i + BATCH);
+          for (const p of batch) acumulados.push(p);
+          layer.setLatLngs(acumulados);
+          i += BATCH;
+          if (i < todos.length) {
+            timers.push(window.setTimeout(inyectar, INTERVAL));
+          }
+        };
+        timers.push(window.setTimeout(inyectar, 400));
+      } catch {
+        // Silencioso — si falla el fetch, el paso 9 sigue siendo funcional sin heatmap.
+      }
+    })();
+
+    return () => {
+      cancelado = true;
+      for (const t of timers) window.clearTimeout(t);
+      if (layer && map) map.removeLayer(layer);
+    };
+  }, [map]);
+
+  return null;
+}
+
 export default function MapaMovilidad() {
   const [paso, setPaso] = useState<Paso>(1);
   const [origen, setOrigen] = useState<Punto | null>(null);
@@ -130,6 +219,7 @@ export default function MapaMovilidad() {
   const [statsFinales, setStatsFinales] = useState<StatsFinales | null>(null);
   const [shareToast, setShareToast] = useState<string | null>(null);
   const [canNativeShare, setCanNativeShare] = useState(false);
+  const [vistaMapa, setVistaMapa] = useState<"calle" | "satelite">("calle");
 
   const [formData, setFormData] = useState<FormData>({
     gastoDiario: "",
@@ -547,6 +637,33 @@ export default function MapaMovilidad() {
             <div className="map-instruction-toast">{toastMessage}</div>
           )}
 
+          {paso === 9 && enviado && (
+            <div className="map-heatmap-caption">
+              Destinos de todas las respuestas
+            </div>
+          )}
+
+          <button
+            type="button"
+            className="map-style-toggle"
+            onClick={() =>
+              setVistaMapa(vistaMapa === "calle" ? "satelite" : "calle")
+            }
+            aria-label={
+              vistaMapa === "calle"
+                ? "Cambiar a vista satelital"
+                : "Cambiar a vista de mapa"
+            }
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={vistaMapa === "calle" ? THUMB_SATELITE : THUMB_CALLE}
+              alt=""
+            />
+            <span>{vistaMapa === "calle" ? "Satélite" : "Mapa"}</span>
+          </button>
+
+
           <MapContainer
             center={PUEBLA_CENTER}
             zoom={PUEBLA_ZOOM}
@@ -554,16 +671,17 @@ export default function MapaMovilidad() {
             zoomControl={false}
           >
             <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              key={vistaMapa}
+              attribution={vistaMapa === "satelite" ? ATTR_SATELITE : ATTR_CALLE}
+              url={vistaMapa === "satelite" ? TILE_SATELITE : TILE_CALLE}
             />
             <MapClickHandler
               onMapClick={handleMapClick}
               isEnabled={mapClickEnabled}
             />
-            <FitBounds points={allPoints} />
+            {paso !== 9 && <FitBounds points={allPoints} />}
 
-            {origen && destino && (
+            {paso !== 9 && origen && destino && (
               <Polyline
                 positions={[
                   [origen.lat, origen.lng],
@@ -576,7 +694,7 @@ export default function MapaMovilidad() {
               />
             )}
 
-            {origen && (
+            {paso !== 9 && origen && (
               <Marker position={[origen.lat, origen.lng]} icon={iconOrigen}>
                 <Popup>
                   <strong>Punto de partida</strong>
@@ -584,13 +702,15 @@ export default function MapaMovilidad() {
               </Marker>
             )}
 
-            {destino && (
+            {paso !== 9 && destino && (
               <Marker position={[destino.lat, destino.lng]} icon={iconDestino}>
                 <Popup>
                   <strong>Punto de destino</strong>
                 </Popup>
               </Marker>
             )}
+
+            {paso === 9 && enviado && <HeatmapLayer />}
           </MapContainer>
         </div>
 
